@@ -7,7 +7,8 @@ export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const userId = session.user.id;
+  try {
+    const userId = session.user.id;
 
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
@@ -58,5 +59,10 @@ export async function POST() {
     data: { userId, insightType: 'daily_outlook', content, contextDate: dayStart },
   });
 
-  return NextResponse.json({ content: insight.content, generatedAt: insight.generatedAt.toISOString() });
+    return NextResponse.json({ content: insight.content, generatedAt: insight.generatedAt.toISOString() });
+  } catch (err) {
+    console.error('[insights/daily] error:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
