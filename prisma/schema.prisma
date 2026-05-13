@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth models (NextAuth v5 / @auth/prisma-adapter) ───────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts           Account[]
+  sessions           Session[]
+  profile            UserProfile?
+  meals              Meal[]
+  bloodworkMarkers   BloodworkMarker[]
+  aiInsights         AIInsight[]
+  subscriptionStatus SubscriptionStatus?
+  habits             Habit[]
+  favoriteFoods      FavoriteFood[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── User profile ────────────────────────────────────────────────────────────
+
+model UserProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  dateOfBirth     DateTime?
+  sex             String?  // "male" | "female" | "other" | "prefer_not_to_say"
+  heightCm        Float?
+  weightKg        Float?
+  goal            String?  // "lose_weight" | "maintain" | "gain_weight"
+  weeklyWeightChangeKg Float? // target weekly change; negative = lose, positive = gain, null/0 = maintain
+  activityLevel   String?  // "sedentary" | "lightly_active" | "moderately_active" | "very_active" | "extra_active"
+  dietaryPrefs    String[] // e.g. ["vegetarian", "gluten_free"]
+  caloricTarget   Int?
+  proteinTargetG  Float?
+  carbTargetG     Float?
+  fatTargetG      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Food database ───────────────────────────────────────────────────────────
+
+model Food {
+  id             String  @id @default(cuid())
+  name           String
+  brand          String?
+  barcode        String? @unique
+  source         String? // 'seed' | 'custom' | 'openfoodfacts' | 'usda'
+  externalId     String? // e.g. USDA fdcId or OFF code
+  servingSize    String  // e.g. "100g", "1 cup", "1 slice"
+  servingWeightG Float   // grams for the serving size above
+  densityGPerMl  Float?  // optional g/mL for accurate volume conversions (defaults to 1.0)
+  calories       Float
+  proteinG       Float
+  carbsG         Float
+  fatG           Float
+  fiberG         Float?
+  sugarG         Float?
+  sodiumMg       Float?
+  cholesterolMg  Float?
+  saturatedFatG  Float?
+  potassiumMg    Float?
+  vitaminDMcg    Float?
+  calciumMg      Float?
+  ironMg         Float?
+  isCustom       Boolean  @default(false)
+  createdBy      String?  // userId if user-created
+
+  mealItems    MealItem[]
+  favoritedBy  FavoriteFood[]
+
+  @@index([name])
+}
+
+// ─── Meal logging ────────────────────────────────────────────────────────────
+
+model Meal {
+  id          String   @id @default(cuid())
+  userId      String
+  loggedAt    DateTime @default(now())
+  mealType    String   // "breakfast" | "lunch" | "dinner" | "snack"
+  notes       String?
+  photoUrl    String?
+  aiAnalyzed  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealItems MealItem[]
+
+  @@index([userId, loggedAt])
+}
+
+model MealItem {
+  id             String @id @default(cuid())
+  mealId         String
+  foodId         String
+  servingCount   Float  // multiplier of food.servingSize
+  // Snapshot of nutrients at logging time (denormalised for performance)
+  calories       Float
+  proteinG       Float
+  carbsG         Float
+  fatG           Float
+  fiberG         Float?
+  sugarG         Float?
+  sodiumMg       Float?
+  cholesterolMg  Float?
+  saturatedFatG  Float?
+  potassiumMg    Float?
+  vitaminDMcg    Float?
+  calciumMg      Float?
+  ironMg         Float?
+
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food Food @relation(fields: [foodId], references: [id])
+}
+
+// ─── Daily nutrition summary (materialised roll-up) ─────────────────────────
+
+model DailyNutritionSummary {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime // midnight UTC of the day
+  calories      Float    @default(0)
+  proteinG      Float    @default(0)
+  carbsG        Float    @default(0)
+  fatG          Float    @default(0)
+  fiberG        Float    @default(0)
+  sugarG        Float    @default(0)
+  sodiumMg      Float    @default(0)
+  cholesterolMg Float    @default(0)
+  saturatedFatG Float    @default(0)
+  potassiumMg   Float    @default(0)
+  vitaminDMcg   Float    @default(0)
+  calciumMg     Float    @default(0)
+  ironMg        Float    @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// ─── Bloodwork ───────────────────────────────────────────────────────────────
+
+model BloodworkMarker {
+  id             String   @id @default(cuid())
+  userId         String
+  markerName     String   // e.g. "LDL", "Vitamin D"
+  value          Float
+  unit           String   // e.g. "mg/dL", "ng/mL"
+  referenceMin   Float?
+  referenceMax   Float?
+  testedAt       DateTime
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, testedAt])
+}
+
+// ─── AI insights ─────────────────────────────────────────────────────────────
+
+model AIInsight {
+  id          String   @id @default(cuid())
+  userId      String
+  insightType String   // "daily_outlook" | "weekly_summary" | "bloodwork_summary"
+  content     String   @db.Text
+  generatedAt DateTime @default(now())
+  contextDate DateTime? // relevant date for daily/weekly insights
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, generatedAt])
+}
+
+// ─── Subscription ────────────────────────────────────────────────────────────
+
+model SubscriptionStatus {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  tier           String   @default("free") // "free" | "pro"
+  stripeCustomerId   String?
+  stripeSubId        String?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Favorite foods ──────────────────────────────────────────────────────────
+
+model FavoriteFood {
+  id        String   @id @default(cuid())
+  userId    String
+  foodId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, foodId])
+  @@index([userId])
+}
+
+// ─── Habits ──────────────────────────────────────────────────────────────────
+
+model Habit {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  icon            String?
+  category        String?  // "nutrition" | "lifestyle" | "manual"
+  frequency       String   @default("daily") // "daily" | "weekly"
+  sourceType      String?  // "bloodwork" | "manual"
+  sourceRef       String?  // marker name that triggered this habit
+  isActive        Boolean  @default(true)
+  streak          Int      @default(0)
+  lastCheckedDate String?  // "YYYY-MM-DD"
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+// ─── Password reset ───────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

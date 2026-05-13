@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Vitra Dev",
+      "type": "shell",
+      "command": "$env:PATH = 'C:\\Users\\Michael\\node\\node-v22.15.0-win-x64;C:\\Program Files\\PostgreSQL\\15\\bin;' + $env:PATH; npx next dev --turbopack -p 3001",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-Command"]
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "Stop Vitra Dev",
+      "type": "shell",
+      "command": "Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force",
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": ["-NoProfile", "-Command"]
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Restart Vitra Dev",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Stop Vitra Dev", "Start Vitra Dev"],
+      "problemMatcher": []
+    }
+  ]
+}
