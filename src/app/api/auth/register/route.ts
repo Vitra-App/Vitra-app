@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -31,19 +30,10 @@ export async function POST(req: NextRequest) {
       name,
       email,
       passwordHash,
+      emailVerified: new Date(),
       subscriptionStatus: { create: { tier: 'free' } },
     },
   });
 
-  // Create a 24-hour email verification token
-  const token = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  await prisma.verificationToken.create({
-    data: { identifier: email, token, expires },
-  });
-
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3001';
-  const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
-
-  return NextResponse.json({ ok: true, verifyUrl }, { status: 201 });
+  return NextResponse.json({ ok: true }, { status: 201 });
 }

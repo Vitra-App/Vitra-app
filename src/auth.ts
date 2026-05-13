@@ -49,8 +49,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           console.log('[authorize] bcrypt:', valid, 'pw:', JSON.stringify(password));
           if (!valid) return null;
 
-          if (!user.emailVerified) return null;
-
           return { id: user.id, email: user.email, name: user.name, image: user.image };
         } catch (err) {
           console.error('[authorize] error:', err);
