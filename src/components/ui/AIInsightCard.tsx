@@ -28,9 +28,11 @@ export function AIInsightCard({ content, generatedAt, isLoading }: AIInsightCard
               <div className="h-3 rounded bg-slate-100 dark:bg-slate-700 w-4/6" />
             </div>
           ) : (
-            <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
-              {content}
-            </div>
+            <ul className="space-y-2">
+              {content.split('\n').filter(l => l.trim()).map((line, i) => (
+                <li key={i} className="text-sm text-slate-600 dark:text-slate-300 leading-snug">{line.trim()}</li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
