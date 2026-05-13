@@ -542,11 +542,12 @@ async function main() {
   const demoPasswordHash = await bcrypt.hash('demo1234', 12);
   const demoUser = await prisma.user.upsert({
     where: { email: 'demo@vitra.app' },
-    update: {},
+    update: { emailVerified: new Date() },
     create: {
       email: 'demo@vitra.app',
       name: 'Demo User',
       passwordHash: demoPasswordHash,
+      emailVerified: new Date(),
       profile: {
         create: {
           sex: 'male',
