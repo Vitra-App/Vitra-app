@@ -193,11 +193,12 @@ function LogFoodInner() {
       const sc = barcodeScannerRef.current;
       if (sc) {
         barcodeScannerRef.current = null;
-        sc.stop().catch(() => {}).finally(() => { try { sc.clear(); } catch {} });
+        sc.stop().catch(() => {});
       }
       return;
     }
     let cancelled = false;
+    let started = false;
     (async () => {
       const mod = await import('html5-qrcode');
       if (cancelled) return;
@@ -212,46 +213,59 @@ function LogFoodInner() {
         ],
       });
       barcodeScannerRef.current = sc;
-      await sc.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 140 } },
-        async (decoded) => {
-          if (cancelled) return;
-          const s = barcodeScannerRef.current;
+      try {
+        await sc.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 140 } },
+          async (decoded) => {
+            if (cancelled) return;
+            const s = barcodeScannerRef.current;
+            barcodeScannerRef.current = null;
+            started = false;
+            if (s) { try { await s.stop(); } catch {} }
+            setBarcodeCameraMode(false);
+            setBarcodeScanning(true);
+            setBarcodeError(null);
+            try {
+              const res = await fetch(`/api/foods/barcode/${encodeURIComponent(decoded.replace(/\D/g, ''))}`);
+              const data = await res.json();
+              if (!res.ok) {
+                setBarcodeError('Product not found. Try searching manually.');
+              } else {
+                setBasket((prev) => {
+                  const existing = prev.find((i) => i.food.id === (data as Food).id);
+                  if (existing) return prev.map((i) => i.food.id === (data as Food).id ? { ...i, servingCount: i.servingCount + 1 } : i);
+                  return [...prev, { food: data as Food, servingCount: 1 }];
+                });
+              }
+            } catch { setBarcodeError('Something went wrong. Try again.'); }
+            finally { setBarcodeScanning(false); }
+          },
+          () => {},
+        );
+        started = true;
+        // If cancelled while start() was in-flight, stop immediately
+        if (cancelled) {
+          started = false;
           barcodeScannerRef.current = null;
-          if (s) { try { await s.stop(); } catch {} }
-          setBarcodeCameraMode(false);
-          setBarcodeScanning(true);
-          setBarcodeError(null);
-          try {
-            const res = await fetch(`/api/foods/barcode/${encodeURIComponent(decoded.replace(/\D/g, ''))}`);
-            const data = await res.json();
-            if (!res.ok) {
-              setBarcodeError('Product not found. Try searching manually.');
-            } else {
-              setBasket((prev) => {
-                const existing = prev.find((i) => i.food.id === (data as Food).id);
-                if (existing) return prev.map((i) => i.food.id === (data as Food).id ? { ...i, servingCount: i.servingCount + 1 } : i);
-                return [...prev, { food: data as Food, servingCount: 1 }];
-              });
-            }
-          } catch { setBarcodeError('Something went wrong. Try again.'); }
-          finally { setBarcodeScanning(false); }
-        },
-        () => {},
-      );
-      // If cancelled while start() was in-flight, stop immediately
-      if (cancelled) {
+          try { await sc.stop(); } catch {}
+        }
+      } catch (err) {
         barcodeScannerRef.current = null;
-        try { await sc.stop(); } catch {}
-        return;
+        if (!cancelled) {
+          setBarcodeError(err instanceof Error ? err.message : 'Camera access denied.');
+          setBarcodeCameraMode(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
       const s = barcodeScannerRef.current;
       barcodeScannerRef.current = null;
-      if (s) { s.stop().catch(() => {}).finally(() => { try { s.clear(); } catch {} }); }
+      if (s && started) {
+        started = false;
+        s.stop().catch(() => {});
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barcodeCameraMode, activeTab]);
