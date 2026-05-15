@@ -16,26 +16,14 @@ export default function ScanPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
 
-  async function stopScanner() {
-    const s = scannerRef.current;
-    if (!s) return;
-    scannerRef.current = null;
-    startedRef.current = false;
-    if (startedRef.current || s) {
-      try { if (startedRef.current) await s.stop(); } catch { /* already stopped */ }
-    }
-    try { s.clear(); } catch { /* element may be gone */ }
-  }
-
   async function handleCancel() {
     mountedRef.current = false;
     const s = scannerRef.current;
     scannerRef.current = null;
-    if (s) {
-      try { if (startedRef.current) await s.stop(); } catch {}
-      try { s.clear(); } catch {}
+    if (s && startedRef.current) {
+      startedRef.current = false;
+      try { await s.stop(); } catch {}
     }
-    startedRef.current = false;
     router.push("/dashboard");
   }
 
@@ -71,7 +59,6 @@ export default function ScanPage() {
             setStatus("looking-up");
             startedRef.current = false;
             try { await scanner.stop(); } catch {}
-            try { scanner.clear(); } catch {}
             scannerRef.current = null;
             if (!mountedRef.current) return;
             const res = await fetch(`/api/foods/barcode/${encodeURIComponent(decoded)}`);
@@ -106,13 +93,10 @@ export default function ScanPage() {
       mountedRef.current = false;
       const s = scannerRef.current;
       scannerRef.current = null;
-      if (s) {
-        if (startedRef.current) {
-          startedRef.current = false;
-          s.stop().catch(() => {}).finally(() => { try { s.clear(); } catch {} });
-        } else {
-          try { s.clear(); } catch {}
-        }
+      if (s && startedRef.current) {
+        startedRef.current = false;
+        s.stop().catch(() => {});
+        // Do NOT call s.clear() — React already removed the DOM element
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
