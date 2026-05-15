@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 
 export default function LoginPage() {
@@ -61,8 +62,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Vitra" width={140} height={140} className="mx-auto block" />
+          <Image src="/logo.png" alt="Vitra" width={140} height={140} className="mx-auto" priority />
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">AI-first nutrition tracking</p>
         </div>
 

@@ -176,7 +176,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-white px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <Image src="/logo.png" alt="Vitra" width={110} height={110} className="mx-auto" priority unoptimized />
+          <Image src="/logo.png" alt="Vitra" width={110} height={110} className="mx-auto" priority />
           <p className="text-slate-500 text-sm mt-1">Quick setup — just 4 steps</p>
         </div>
 
