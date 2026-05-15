@@ -7,26 +7,37 @@ type Html5QrcodeCtor = typeof import("html5-qrcode").Html5Qrcode;
 
 const READER_ID = "barcode-reader";
 
-async function safeStop(scanner: InstanceType<Html5QrcodeCtor>) {
-  try {
-    await scanner.stop();
-  } catch {
-    // not running or already stopped — ignore
-  }
-  try {
-    scanner.clear();
-  } catch {
-    // ignore
-  }
-}
-
 export default function ScanPage() {
   const router = useRouter();
   const scannerRef = useRef<InstanceType<Html5QrcodeCtor> | null>(null);
+  const startedRef = useRef(false);
   const mountedRef = useRef(true);
   const [status, setStatus] = useState<"idle" | "starting" | "scanning" | "looking-up" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [lastBarcode, setLastBarcode] = useState<string | null>(null);
+
+  async function stopScanner() {
+    const s = scannerRef.current;
+    if (!s) return;
+    scannerRef.current = null;
+    startedRef.current = false;
+    if (startedRef.current || s) {
+      try { if (startedRef.current) await s.stop(); } catch { /* already stopped */ }
+    }
+    try { s.clear(); } catch { /* element may be gone */ }
+  }
+
+  async function handleCancel() {
+    mountedRef.current = false;
+    const s = scannerRef.current;
+    scannerRef.current = null;
+    if (s) {
+      try { if (startedRef.current) await s.stop(); } catch {}
+      try { s.clear(); } catch {}
+    }
+    startedRef.current = false;
+    router.push("/dashboard");
+  }
 
   useEffect(() => {
     mountedRef.current = true;
@@ -58,7 +69,10 @@ export default function ScanPage() {
             if (!mountedRef.current) return;
             setLastBarcode(decoded);
             setStatus("looking-up");
-            await safeStop(scanner);
+            startedRef.current = false;
+            try { await scanner.stop(); } catch {}
+            try { scanner.clear(); } catch {}
+            scannerRef.current = null;
             if (!mountedRef.current) return;
             const res = await fetch(`/api/foods/barcode/${encodeURIComponent(decoded)}`);
             if (!mountedRef.current) return;
@@ -76,6 +90,7 @@ export default function ScanPage() {
           () => { /* per-frame decode errors — ignore */ },
         );
 
+        startedRef.current = true;
         if (mountedRef.current) setStatus("scanning");
       } catch (err) {
         if (mountedRef.current) {
@@ -91,7 +106,14 @@ export default function ScanPage() {
       mountedRef.current = false;
       const s = scannerRef.current;
       scannerRef.current = null;
-      if (s) safeStop(s);
+      if (s) {
+        if (startedRef.current) {
+          startedRef.current = false;
+          s.stop().catch(() => {}).finally(() => { try { s.clear(); } catch {} });
+        } else {
+          try { s.clear(); } catch {}
+        }
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -119,7 +141,7 @@ export default function ScanPage() {
         </div>
       </div>
 
-      <button className="btn-secondary w-full" onClick={() => router.push("/dashboard")}>
+      <button className="btn-secondary w-full" onClick={handleCancel}>
         Cancel
       </button>
     </div>
