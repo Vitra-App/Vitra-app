@@ -219,7 +219,7 @@ function LogFoodInner() {
           if (cancelled) return;
           const s = barcodeScannerRef.current;
           barcodeScannerRef.current = null;
-          if (s) { try { await s.stop(); s.clear(); } catch {} }
+          if (s) { try { await s.stop(); } catch {} }
           setBarcodeCameraMode(false);
           setBarcodeScanning(true);
           setBarcodeError(null);
@@ -240,6 +240,12 @@ function LogFoodInner() {
         },
         () => {},
       );
+      // If cancelled while start() was in-flight, stop immediately
+      if (cancelled) {
+        barcodeScannerRef.current = null;
+        try { await sc.stop(); } catch {}
+        return;
+      }
     })();
     return () => {
       cancelled = true;

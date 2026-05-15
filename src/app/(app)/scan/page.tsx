@@ -78,7 +78,14 @@ export default function ScanPage() {
         );
 
         startedRef.current = true;
-        if (mountedRef.current) setStatus("scanning");
+        // If component unmounted while start() was running, stop immediately
+        if (!mountedRef.current) {
+          startedRef.current = false;
+          scannerRef.current = null;
+          try { await scanner.stop(); } catch {}
+          return;
+        }
+        setStatus("scanning");
       } catch (err) {
         if (mountedRef.current) {
           setError(err instanceof Error ? err.message : "Failed to start camera");
