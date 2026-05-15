@@ -104,6 +104,8 @@ export default async function DashboardPage({
   };
 
   const isPro = subStatus?.tier === 'pro';
+  const insightIsToday = latestInsight !== null &&
+    new Date(latestInsight.generatedAt).toISOString().slice(0, 10) === today.toISOString().slice(0, 10);
 
   const dailyScore = calcDailyScore(
     {
@@ -205,8 +207,8 @@ export default async function DashboardPage({
       {/* AI Insight */}
       {isPro ? (
         <div>
-          {latestInsight ? (
-            <AIInsightCard content={latestInsight.content} generatedAt={latestInsight.generatedAt} />
+          {insightIsToday ? (
+            <AIInsightCard content={latestInsight!.content} generatedAt={latestInsight!.generatedAt} />
           ) : (
             <div className="card text-center py-8">
               <p className="text-sm text-slate-500 dark:text-slate-400 text-sm">No AI insight yet today.</p>
