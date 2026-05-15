@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { VitraLogo } from '@/components/VitraLogo';
 
 function VerifyContent() {
   const params = useSearchParams();
@@ -54,15 +54,7 @@ export default function VerifyEmailPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-white dark:from-slate-950 dark:to-slate-900 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Image
-            src="/logo.png"
-            alt="Vitra"
-            width={100}
-            height={100}
-            className="mx-auto"
-            priority
-            unoptimized
-          />
+          <VitraLogo size="lg" className="mb-2" />
         </div>
         <div className="card">
           <Suspense fallback={<p className="text-center text-slate-500">Loading…</p>}>

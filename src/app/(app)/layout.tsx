@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { MobileNav } from '@/components/layout/Sidebar';
 import { getSession } from '@/lib/session';
-import Image from 'next/image';
+import { VitraLogo } from '@/components/VitraLogo';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="w-full max-w-[430px] bg-white dark:bg-slate-950 min-h-screen flex flex-col shadow-2xl relative">
         {/* Top header bar */}
         <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-100 dark:border-slate-800/60 px-4 py-3 flex items-center justify-center">
-          <Image src="/logo.png" alt="Vitra" width={72} height={28} className="object-contain" />
+          <VitraLogo size="sm" />
         </header>
 
         {/* Page content */}
