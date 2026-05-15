@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import logoSrc from '../../public/logo.png';
 
 type VitraLogoProps = {
   /** 'sm' = header bar size, 'lg' = login/onboarding full size */
@@ -10,11 +11,10 @@ export function VitraLogo({ size = 'lg', className = '' }: VitraLogoProps) {
   if (size === 'sm') {
     return (
       <Image
-        src="/logo.png"
+        src={logoSrc}
         alt="Vitra"
         width={32}
         height={32}
-        unoptimized
         className={className}
       />
     );
@@ -23,11 +23,10 @@ export function VitraLogo({ size = 'lg', className = '' }: VitraLogoProps) {
   return (
     <div className={`flex flex-col items-center ${className}`}>
       <Image
-        src="/logo.png"
+        src={logoSrc}
         alt="Vitra"
         width={160}
         height={160}
-        unoptimized
         priority
       />
     </div>
