@@ -75,7 +75,7 @@ export default function MealPhotoPage() {
   }
   function removeItem(id: string) { setItems((prev) => prev.filter((i) => i.id !== id)); }
   function addItem() {
-    setItems((prev) => [...prev, { id: Date.now().toString(), name: "", estimatedServingSize: "1 serving", calories: 0, proteinG: 0, carbsG: 0, fatG: 0 }]);
+    setItems((prev) => [...prev, { id: Date.now().toString(), name: "", estimatedServingSize: "1 serving", quantity: 1, calories: 0, proteinG: 0, carbsG: 0, fatG: 0 }]);
   }
   function reset() { setPreview(null); setBase64(null); setAnalysis(null); setItems([]); setError(null); }
 

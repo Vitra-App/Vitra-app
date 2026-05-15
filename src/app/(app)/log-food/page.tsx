@@ -100,6 +100,8 @@ function LogFoodInner() {
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const barcodeScannerRef = useRef<InstanceType<Html5QrcodeCtor> | null>(null);
   const [barcodeCameraMode, setBarcodeCameraMode] = useState(false);
+  const [selectedFood, setSelectedFood] = useState<Food | null>(null);
+  const [pendingCount, setPendingCount] = useState(1);
 
   async function lookupBarcode(code: string) {
     const clean = code.replace(/\D/g, '');
@@ -288,7 +290,7 @@ function LogFoodInner() {
       });
       if (!res.ok) { setPhotoError('AI analysis failed. Try again.'); return; }
       const analysis = await res.json() as {
-        items: Array<{ name: string; estimatedServingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number }>;
+        items: Array<{ name: string; estimatedServingSize: string; quantity?: number; calories: number; proteinG: number; carbsG: number; fatG: number }>;
       };
       if (!analysis.items?.length) { setPhotoError('No food detected in photo.'); return; }
 
@@ -322,7 +324,7 @@ function LogFoodInner() {
         });
         if (importRes.ok) {
           const created: Food = await importRes.json();
-          addToBasket(created);
+          addToBasket(created, item.quantity ?? 1);
         }
       }
     } catch {
@@ -344,21 +346,22 @@ function LogFoodInner() {
       });
       if (!res.ok) return;
       const created: Food = await res.json();
-      addToBasket(created);
+      setPendingCount(1);
+      setSelectedFood(created);
     } finally {
       setImporting(null);
     }
   }
 
-  function addToBasket(food: Food) {
+  function addToBasket(food: Food, qty = 1) {
     setBasket((prev) => {
       const existing = prev.find((i) => i.food.id === food.id);
       if (existing) {
         return prev.map((i) =>
-          i.food.id === food.id ? { ...i, servingCount: i.servingCount + 1 } : i,
+          i.food.id === food.id ? { ...i, servingCount: i.servingCount + qty } : i,
         );
       }
-      return [...prev, { food, servingCount: 1 }];
+      return [...prev, { food, servingCount: qty }];
     });
   }
 
@@ -416,9 +419,13 @@ function LogFoodInner() {
   function FoodRow({ food }: { food: Food }) {
     const inBasket = basket.find((i) => i.food.id === food.id);
     const isFav = favoriteIds.has(food.id);
+    function openPicker() {
+      setPendingCount(inBasket?.servingCount ?? 1);
+      setSelectedFood(food);
+    }
     return (
       <div className="flex items-center gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
-        <div className="flex-1 min-w-0">
+        <button className="flex-1 min-w-0 text-left" onClick={openPicker}>
           <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
             {food.name}
             {food.isCustom && (
@@ -432,7 +439,7 @@ function LogFoodInner() {
             {food.servingSize} · {Math.round(food.calories)} kcal ·{' '}
             <span className="text-green-600 dark:text-green-400">{food.proteinG.toFixed(0)}g protein</span>
           </p>
-        </div>
+        </button>
         <button
           onClick={() => toggleFavorite(food)}
           className={`text-xl leading-none transition-colors shrink-0 ${
@@ -443,7 +450,7 @@ function LogFoodInner() {
           ★
         </button>
         <button
-          onClick={() => addToBasket(food)}
+          onClick={openPicker}
           className={`w-8 h-8 rounded-full flex items-center justify-center text-base font-bold transition-colors shrink-0 ${
             inBasket
               ? 'bg-brand-500 text-white'
@@ -451,7 +458,7 @@ function LogFoodInner() {
           }`}
           aria-label="Add to meal"
         >
-          +
+          {inBasket ? '✓' : '+'}
         </button>
       </div>
     );
@@ -786,6 +793,89 @@ function LogFoodInner() {
           listForTab.map((food) => <FoodRow key={food.id} food={food} />)
         )}
       </div>
+
+      {/* Food serving picker sheet */}
+      {selectedFood && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+          onClick={() => setSelectedFood(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-t-2xl px-5 pt-5 pb-8 space-y-5 shadow-2xl max-w-[430px] mx-auto w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900 dark:text-slate-100 leading-snug">{selectedFood.name}</p>
+                {selectedFood.brand && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{selectedFood.brand}</p>}
+              </div>
+              <button onClick={() => setSelectedFood(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-0.5">×</button>
+            </div>
+
+            {/* Per-serving info */}
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+              <span className="font-medium">1 serving</span> = {selectedFood.servingSize}
+              <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
+              {Math.round(selectedFood.calories)} kcal
+              <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
+              {selectedFood.proteinG.toFixed(0)}g protein
+            </div>
+
+            {/* Stepper */}
+            <div className="flex items-center justify-center gap-6">
+              <button
+                onClick={() => setPendingCount((c) => Math.max(0.5, Math.round((c - 0.5) * 2) / 2))}
+                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >−</button>
+              <div className="text-center w-20">
+                <span className="text-3xl font-bold text-slate-900 dark:text-slate-100">{pendingCount}</span>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">servings</p>
+              </div>
+              <button
+                onClick={() => setPendingCount((c) => Math.round((c + 0.5) * 2) / 2)}
+                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >+</button>
+            </div>
+
+            {/* Totals preview */}
+            <div className="flex justify-center gap-6 text-center">
+              <div>
+                <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{Math.round(selectedFood.calories * pendingCount)}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">kcal</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">{(selectedFood.proteinG * pendingCount).toFixed(0)}g</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">protein</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{(selectedFood.carbsG * pendingCount).toFixed(0)}g</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">carbs</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{(selectedFood.fatG * pendingCount).toFixed(0)}g</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">fat</p>
+              </div>
+            </div>
+
+            {/* Add button */}
+            <button
+              onClick={() => {
+                const existing = basket.find((i) => i.food.id === selectedFood.id);
+                if (existing) {
+                  setBasket((prev) => prev.map((i) => i.food.id === selectedFood.id ? { ...i, servingCount: pendingCount } : i));
+                } else {
+                  addToBasket(selectedFood, pendingCount);
+                }
+                setSelectedFood(null);
+              }}
+              className="btn-primary w-full py-3 text-base font-semibold"
+            >
+              {basket.find((i) => i.food.id === selectedFood.id) ? 'Update serving' : 'Add to meal'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Basket — sits above nav bar */}
       {editLoading ? (

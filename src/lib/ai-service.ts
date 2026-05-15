@@ -31,6 +31,7 @@ export interface MealPhotoAnalysis {
   items: Array<{
     name: string;
     estimatedServingSize: string;
+    quantity: number;
     calories: number;
     proteinG: number;
     carbsG: number;
@@ -183,9 +184,9 @@ export async function analyzeMealPhoto(
     messages: [
       {
         role: 'system',
-        content: `You are a nutrition analysis assistant. When given a meal photo, identify each food item, estimate portion sizes, and return a JSON object with the following structure:
+        content: `You are a nutrition analysis assistant. When given a meal photo, identify each DISTINCT food item, estimate portion sizes, and return a JSON object with the following structure:
 {
-  "items": [{ "name": "", "estimatedServingSize": "", "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0 }],
+  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0 }],
   "totalCalories": 0,
   "totalProteinG": 0,
   "totalCarbsG": 0,
@@ -193,7 +194,7 @@ export async function analyzeMealPhoto(
   "confidenceScore": 0.0,
   "notes": ""
 }
-Be conservative with estimates. Use any description provided by the user to improve accuracy — it may name specific dishes, portion sizes, or cooking methods. Confidence score should reflect image clarity and identifiability.`,
+IMPORTANT: Group identical items — for example, 4 slices of pizza should be ONE item with quantity=4, NOT four separate items. The calories/protein/carbs/fat fields represent the values for ONE unit of the estimatedServingSize. Be conservative with estimates. Use any description provided by the user to improve accuracy. Confidence score should reflect image clarity and identifiability.`,
       },
       {
         role: 'user',
@@ -217,9 +218,9 @@ Be conservative with estimates. Use any description provided by the user to impr
 function getMockMealPhotoAnalysis(): MealPhotoAnalysis {
   return {
     items: [
-      { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', calories: 248, proteinG: 46, carbsG: 0, fatG: 5.4 },
-      { name: 'Brown Rice', estimatedServingSize: '1 cup', calories: 216, proteinG: 5, carbsG: 45, fatG: 1.8 },
-      { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', calories: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6 },
+      { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', quantity: 1, calories: 248, proteinG: 46, carbsG: 0, fatG: 5.4 },
+      { name: 'Brown Rice', estimatedServingSize: '1 cup', quantity: 1, calories: 216, proteinG: 5, carbsG: 45, fatG: 1.8 },
+      { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', quantity: 1, calories: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6 },
     ],
     totalCalories: 519,
     totalProteinG: 54.7,
