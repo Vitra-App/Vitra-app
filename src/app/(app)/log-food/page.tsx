@@ -103,6 +103,9 @@ function LogFoodInner() {
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [pendingCount, setPendingCount] = useState(1);
 
+  const [dailyTargets, setDailyTargets] = useState<{ caloricTarget: number | null; proteinTargetG: number | null; carbTargetG: number | null; fatTargetG: number | null } | null>(null);
+  const [dailyConsumed, setDailyConsumed] = useState<{ calories: number; protein: number; carbs: number; fat: number }>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+
   async function lookupBarcode(code: string) {
     const clean = code.replace(/\D/g, '');
     if (!clean) return;
@@ -150,17 +153,33 @@ function LogFoodInner() {
   }, [editId]);
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
     Promise.all([
       fetch('/api/foods/recents').then((r) => r.json()),
       fetch('/api/foods/favorites').then((r) => r.json()),
       fetch('/api/foods/mine').then((r) => r.json()),
-    ]).then(([rec, fav, cust]) => {
+      fetch('/api/user/profile').then((r) => r.json()),
+      fetch(`/api/meals?date=${today}`).then((r) => r.json()),
+    ]).then(([rec, fav, cust, profile, meals]) => {
       setRecents(Array.isArray(rec) ? rec : []);
       const favArr: Food[] = Array.isArray(fav) ? fav : [];
       setFavorites(favArr);
       setFavoriteIds(new Set(favArr.map((f) => f.id)));
       setCustom(Array.isArray(cust) ? cust : []);
       setLoaded(true);
+      if (profile && !profile.error) setDailyTargets(profile);
+      if (Array.isArray(meals)) {
+        let cal = 0, pro = 0, carb = 0, fat = 0;
+        for (const meal of meals) {
+          for (const item of meal.mealItems ?? []) {
+            cal += item.calories ?? 0;
+            pro += item.proteinG ?? 0;
+            carb += item.carbsG ?? 0;
+            fat += item.fatG ?? 0;
+          }
+        }
+        setDailyConsumed({ calories: cal, protein: pro, carbs: carb, fat: fat });
+      }
     });
   }, []);
 
@@ -877,6 +896,46 @@ function LogFoodInner() {
                 <p className="text-xs text-slate-400 dark:text-slate-500">fat</p>
               </div>
             </div>
+
+            {/* Daily progress */}
+            {dailyTargets && (() => {
+              const addCal = Math.round(selectedFood.calories * pendingCount);
+              const addPro = Math.round(selectedFood.proteinG * pendingCount);
+              const addCarb = Math.round(selectedFood.carbsG * pendingCount);
+              const addFat = Math.round(selectedFood.fatG * pendingCount);
+              const tCal = dailyTargets.caloricTarget ?? 2000;
+              const tPro = dailyTargets.proteinTargetG ?? 150;
+              const tCarb = dailyTargets.carbTargetG ?? 200;
+              const tFat = dailyTargets.fatTargetG ?? 65;
+              const rows = [
+                { label: 'Calories', consumed: dailyConsumed.calories, add: addCal, target: tCal, color: 'bg-slate-500' },
+                { label: 'Protein', consumed: dailyConsumed.protein, add: addPro, target: tPro, color: 'bg-green-500' },
+                { label: 'Carbs', consumed: dailyConsumed.carbs, add: addCarb, target: tCarb, color: 'bg-blue-500' },
+                { label: 'Fat', consumed: dailyConsumed.fat, add: addFat, target: tFat, color: 'bg-amber-500' },
+              ];
+              return (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Daily progress after adding</p>
+                  {rows.map(({ label, consumed, add, target, color }) => {
+                    const afterPct = Math.min(100, Math.round(((consumed + add) / target) * 100));
+                    const consumedPct = Math.min(100, Math.round((consumed / target) * 100));
+                    const remaining = Math.max(0, target - consumed - add);
+                    return (
+                      <div key={label}>
+                        <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                          <span>{label}</span>
+                          <span>{Math.round(consumed + add)} / {target}{label === 'Calories' ? ' kcal' : 'g'} <span className="text-slate-400">({remaining}{label === 'Calories' ? ' kcal' : 'g'} left)</span></span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden relative">
+                          <div className={`absolute inset-y-0 left-0 rounded-full opacity-40 ${color}`} style={{ width: `${consumedPct}%` }} />
+                          <div className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${afterPct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* Add button */}
             <button
