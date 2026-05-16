@@ -878,7 +878,7 @@ function LogFoodInner() {
             onClick={() => setSelectedFood(null)}
           >
             <div
-              className="bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl max-w-[430px] mx-auto w-full flex flex-col"
+              className="bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl max-w-[430px] mx-auto w-full flex flex-col overflow-hidden"
               style={{ maxHeight: '88vh' }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -915,9 +915,10 @@ function LogFoodInner() {
               </div>
 
               {/* Swipeable cards: Macros | Daily Progress | Micros */}
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               <div
                 ref={pickerSliderRef}
-                className="flex overflow-x-auto snap-x snap-mandatory flex-none"
+                className="flex overflow-x-auto snap-x snap-mandatory flex-1 min-h-0"
                 style={{ scrollbarWidth: 'none' }}
                 onScroll={() => {
                   if (!pickerSliderRef.current) return;
@@ -925,7 +926,7 @@ function LogFoodInner() {
                 }}
               >
                 {/* Card 0 — Macros */}
-                <div className="snap-start shrink-0 w-full px-5 pb-2">
+                <div className="snap-start shrink-0 w-full px-5 pb-2 flex flex-col justify-center">
                   <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-4 flex justify-between text-center">
                     <div>
                       <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{cal}</p>
@@ -960,7 +961,7 @@ function LogFoodInner() {
                     { label: 'Fat',      consumed: dailyConsumed.fat,      add: Number(fat),             target: tFat,  unit: 'g',    color: 'bg-amber-500' },
                   ];
                   return (
-                    <div className="snap-start shrink-0 w-full px-5 pb-2 space-y-2.5">
+                    <div className="snap-start shrink-0 w-full px-5 pb-2 space-y-2.5 overflow-y-auto">
                       <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Daily targets after adding</p>
                       {rows.map(({ label, consumed, add, target, unit, color }) => {
                         const afterPct = Math.min(100, Math.round(((consumed + add) / target) * 100));
@@ -985,7 +986,7 @@ function LogFoodInner() {
 
                 {/* Card 2 — Micronutrients */}
                 {hasMicros && (
-                  <div className="snap-start shrink-0 w-full px-5 pb-2 overflow-y-auto" style={{ maxHeight: '38vh' }}>
+                  <div className="snap-start shrink-0 w-full px-5 pb-2 overflow-y-auto">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">% Daily Value</p>
                     <div className="space-y-3">
                       {MICRO_ROWS.filter((r) => f[r.key] != null).map(({ key, label, unit, color }) => {
@@ -1010,7 +1011,7 @@ function LogFoodInner() {
               </div>
 
               {/* Dot indicators */}
-              <div className="flex justify-center gap-1.5 pt-2 pb-1 flex-none">
+              <div className="flex justify-center gap-1.5 pt-2 pb-1 flex-none shrink-0">
                 {([0, dailyTargets ? 1 : null, hasMicros ? (dailyTargets ? 2 : 1) : null] as (number|null)[]).filter((p) => p !== null).map((p) => (
                   <button
                     key={p}
@@ -1037,6 +1038,7 @@ function LogFoodInner() {
                   {basket.find((i) => i.food.id === f.id) ? 'Update serving' : 'Add to meal'}
                 </button>
               </div>
+              </div>{/* end flex-1 slider+dots+button wrapper */}
             </div>
           </div>
         );
