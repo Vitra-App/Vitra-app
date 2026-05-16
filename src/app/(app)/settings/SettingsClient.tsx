@@ -68,7 +68,29 @@ export function SettingsClient({ user, profile, tier, stripeEnabled }: Props) {
     proteinTargetG: String(profile?.proteinTargetG ?? ''),
     carbTargetG: String(profile?.carbTargetG ?? ''),
     fatTargetG: String(profile?.fatTargetG ?? ''),
+    dietaryPrefs: (profile?.dietaryPrefs ?? []) as string[],
   });
+
+  const DIETARY_OPTIONS = [
+    { value: 'vegetarian', label: 'Vegetarian' },
+    { value: 'vegan', label: 'Vegan' },
+    { value: 'gluten_free', label: 'Gluten-Free' },
+    { value: 'dairy_free', label: 'Dairy-Free' },
+    { value: 'nut_free', label: 'Nut-Free' },
+    { value: 'keto', label: 'Keto' },
+    { value: 'paleo', label: 'Paleo' },
+    { value: 'low_sodium', label: 'Low Sodium' },
+  ];
+
+  function togglePref(value: string) {
+    setForm((f) => ({
+      ...f,
+      dietaryPrefs: f.dietaryPrefs.includes(value)
+        ? f.dietaryPrefs.filter((p) => p !== value)
+        : [...f.dietaryPrefs, value],
+    }));
+    setSaved(false);
+  }
 
   function set(k: string, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -140,6 +162,7 @@ export function SettingsClient({ user, profile, tier, stripeEnabled }: Props) {
           proteinTargetG: form.proteinTargetG ? parseFloat(form.proteinTargetG) : null,
           carbTargetG: form.carbTargetG ? parseFloat(form.carbTargetG) : null,
           fatTargetG: form.fatTargetG ? parseFloat(form.fatTargetG) : null,
+          dietaryPrefs: form.dietaryPrefs,
         }),
       });
       // Pull the server-derived targets back into the rendered profile.
@@ -348,6 +371,44 @@ export function SettingsClient({ user, profile, tier, stripeEnabled }: Props) {
         </div>
       </form>
 
+      {/* Dietary Preferences */}
+      <div className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Dietary Preferences</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Used to personalise AI recommendations.</p>
+        <div className="flex flex-wrap gap-2">
+          {DIETARY_OPTIONS.map((opt) => {
+            const active = form.dietaryPrefs.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => togglePref(opt.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  active
+                    ? 'bg-brand-500 text-white border-brand-500'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            fetch('/api/user/profile', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dietaryPrefs: form.dietaryPrefs }),
+            }).then(() => setSaved(true));
+          }}
+          className="btn-secondary text-sm"
+        >
+          Save Preferences
+        </button>
+      </div>
+
       <div className="card">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Appearance</h2>
         <button
@@ -358,6 +419,23 @@ export function SettingsClient({ user, profile, tier, stripeEnabled }: Props) {
           <span>{dark ? '🌙 Dark mode' : '☀️ Light mode'}</span>
           <span className="text-xs text-slate-400 dark:text-slate-500">{dark ? 'On' : 'Off'}</span>
         </button>
+      </div>
+
+      {/* Export data */}
+      <div className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Export Data</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Download your nutrition history as a CSV spreadsheet.</p>
+        <div className="flex gap-2 flex-wrap">
+          <a href="/api/export/nutrition?days=30" download className="btn-secondary text-sm">
+            Last 30 days
+          </a>
+          <a href="/api/export/nutrition?days=90" download className="btn-secondary text-sm">
+            Last 90 days
+          </a>
+          <a href="/api/export/nutrition?days=365" download className="btn-secondary text-sm">
+            Last 365 days
+          </a>
+        </div>
       </div>
 
       <div className="card">

@@ -17,6 +17,9 @@ import { DayNav } from '@/components/ui/DayNav';
 import { NutritionGuidance } from '@/components/ui/NutritionGuidance';
 import { TrendCard } from '@/components/ui/TrendCard';
 import { HabitsCard } from '@/components/ui/HabitsCard';
+import { WaterTracker } from '@/components/ui/WaterTracker';
+import { WeightWidget } from '@/components/ui/WeightWidget';
+import { WeeklySummaryCard } from '@/components/ui/WeeklySummaryCard';
 
 import { calcDailyScore } from '@/lib/nutrition';
 import Link from 'next/link';
@@ -200,9 +203,23 @@ export default async function DashboardPage({
         }))}
         targets={{ calories: targets.calories, protein: targets.protein, fiber: targets.fiber }}
       />
+      {isToday && (
+        <Link href="/progress" className="block text-center text-xs text-brand-600 dark:text-brand-400 -mt-3">
+          View 30-day progress →
+        </Link>
+      )}
 
       {/* Habits — today only */}
       {isToday && <HabitsCard />}
+
+      {/* Water tracking — today only */}
+      {isToday && <WaterTracker />}
+
+      {/* Weight log */}
+      {isToday && <WeightWidget />}
+
+      {/* Weekly AI Summary */}
+      {isToday && <WeeklySummaryCard isPro={isPro} />}
 
       {/* AI Insight */}
       {isPro ? (

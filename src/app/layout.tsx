@@ -5,6 +5,12 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 export const metadata: Metadata = {
   title: 'Vitra \u2013 AI-First Nutrition Tracking',
   description: 'Log meals, track macros, get AI nutrition insights and bloodwork analysis.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Vitra',
+  },
 };
 
 export const viewport: Viewport = {

@@ -1,0 +1,22 @@
+{
+  "name": "Vitra – AI Nutrition Tracking",
+  "short_name": "Vitra",
+  "description": "Log meals, track macros, get AI nutrition insights and bloodwork analysis.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#22c55e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

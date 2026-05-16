@@ -2,10 +2,20 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { generateDailyNutritionOutlook } from '@/lib/ai-service';
+import { rateLimit } from '@/lib/rate-limit';
 
 export async function POST() {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // 5 insight generations per hour per user
+  const rl = rateLimit(`insight:${session.user.id}`, 5, 60 * 60 * 1000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Try again in ${Math.ceil(rl.retryAfterMs / 60000)} min.` },
+      { status: 429 },
+    );
+  }
 
   try {
     const userId = session.user.id;

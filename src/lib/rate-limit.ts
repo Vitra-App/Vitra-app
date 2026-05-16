@@ -1,0 +1,40 @@
+/**
+ * Simple in-memory sliding-window rate limiter.
+ * Works well on Railway (persistent Node.js server) and in local dev.
+ * Resets on server restart — acceptable for anti-abuse, not billing.
+ */
+
+interface Window {
+  count: number;
+  resetAt: number; // ms timestamp
+}
+
+const store = new Map<string, Window>();
+
+/**
+ * Check whether the given key has exceeded the limit.
+ * @param key        Unique identifier (e.g. userId or IP)
+ * @param limit      Max allowed requests per window
+ * @param windowMs   Window duration in milliseconds
+ * @returns `{ ok: true }` when allowed, `{ ok: false, retryAfterMs }` when rate-limited
+ */
+export function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): { ok: true } | { ok: false; retryAfterMs: number } {
+  const now = Date.now();
+  const entry = store.get(key);
+
+  if (!entry || now >= entry.resetAt) {
+    store.set(key, { count: 1, resetAt: now + windowMs });
+    return { ok: true };
+  }
+
+  if (entry.count < limit) {
+    entry.count += 1;
+    return { ok: true };
+  }
+
+  return { ok: false, retryAfterMs: entry.resetAt - now };
+}

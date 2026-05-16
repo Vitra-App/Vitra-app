@@ -19,6 +19,7 @@ const schema = z.object({
   proteinTargetG: z.number().nullable().optional(),
   carbTargetG: z.number().nullable().optional(),
   fatTargetG: z.number().nullable().optional(),
+  dietaryPrefs: z.array(z.string()).optional(),
 });
 
 export async function PUT(req: NextRequest) {

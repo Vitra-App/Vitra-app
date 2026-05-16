@@ -29,6 +29,7 @@ model User {
   habits             Habit[]
   favoriteFoods      FavoriteFood[]
   passwordResetTokens PasswordResetToken[]
+  weightEntries      WeightEntry[]
 }
 
 model Account {
@@ -186,10 +187,25 @@ model DailyNutritionSummary {
   vitaminDMcg   Float    @default(0)
   calciumMg     Float    @default(0)
   ironMg        Float    @default(0)
+  waterMl       Float    @default(0)
   updatedAt     DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+// ─── Weight entries ──────────────────────────────────────────────────────────
+
+model WeightEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  weightKg  Float
+  notes     String?
+  loggedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedAt])
 }
 
 // ─── Bloodwork ───────────────────────────────────────────────────────────────

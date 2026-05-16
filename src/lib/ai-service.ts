@@ -170,6 +170,102 @@ function generateMockDailyOutlook(
   return insights.join('\n\n');
 }
 
+// ── generateWeeklySummary ─────────────────────────────────────────────────────
+
+export interface WeeklyDaySummary {
+  date: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG: number;
+  sodiumMg: number;
+}
+
+export async function generateWeeklySummary(
+  profile: Pick<UserProfile, 'goal' | 'caloricTarget' | 'proteinTargetG' | 'carbTargetG' | 'fatTargetG'> | null,
+  days: WeeklyDaySummary[],
+): Promise<string> {
+  const daysLogged = days.filter((d) => d.calories > 0);
+
+  if (daysLogged.length < 2) {
+    return 'Log at least 2 days this week to generate a weekly summary.';
+  }
+
+  if (!hasOpenAIKey()) {
+    return generateMockWeeklySummary(profile, days);
+  }
+
+  const system = `You are a friendly nutrition coach writing a weekly check-in summary.
+Be concise, specific, and motivating. No fluff.
+Respond with 4–6 bullet points (emoji + one sentence each). No headers, no bold, no numbered lists.`;
+
+  const avgCal = Math.round(daysLogged.reduce((s, d) => s + d.calories, 0) / daysLogged.length);
+  const avgProt = Math.round(daysLogged.reduce((s, d) => s + d.proteinG, 0) / daysLogged.length);
+  const avgFiber = Math.round(daysLogged.reduce((s, d) => s + d.fiberG, 0) / daysLogged.length);
+  const avgSodium = Math.round(daysLogged.reduce((s, d) => s + d.sodiumMg, 0) / daysLogged.length);
+
+  const user = `Goal: ${profile?.goal ?? 'not set'}
+Caloric target: ${profile?.caloricTarget ?? 'not set'} kcal/day
+Protein target: ${profile?.proteinTargetG ?? 'not set'}g/day
+
+This week (${daysLogged.length}/7 days logged):
+- Avg calories: ${avgCal} kcal
+- Avg protein: ${avgProt}g
+- Avg fiber: ${avgFiber}g
+- Avg sodium: ${avgSodium}mg
+
+Daily breakdown:
+${days.map((d) => `${d.date}: ${d.calories > 0 ? `${Math.round(d.calories)} kcal, ${Math.round(d.proteinG)}g protein` : 'not logged'}`).join('\n')}
+
+Write a weekly nutrition summary with actionable insights.`;
+
+  return callOpenAI(system, user);
+}
+
+function generateMockWeeklySummary(
+  profile: Pick<UserProfile, 'goal' | 'caloricTarget' | 'proteinTargetG'> | null,
+  days: WeeklyDaySummary[],
+): string {
+  const logged = days.filter((d) => d.calories > 0);
+  const avgCal = Math.round(logged.reduce((s, d) => s + d.calories, 0) / (logged.length || 1));
+  const avgProt = Math.round(logged.reduce((s, d) => s + d.proteinG, 0) / (logged.length || 1));
+  const target = profile?.caloricTarget ?? 2000;
+  const protTarget = profile?.proteinTargetG ?? 120;
+
+  const lines: string[] = [];
+  lines.push(
+    avgCal > target + 200
+      ? `📈 You averaged ${avgCal} kcal/day this week — slightly above your ${target} kcal target. Watch portions on high-calorie days.`
+      : avgCal < target - 300
+      ? `📉 Average calories (${avgCal} kcal) were below target — ensure you're eating enough to fuel your goals.`
+      : `✅ Solid week — your average of ${avgCal} kcal/day was close to your ${target} kcal target.`,
+  );
+
+  const protDays = logged.filter((d) => d.proteinG >= protTarget * 0.8).length;
+  lines.push(
+    protDays >= logged.length * 0.7
+      ? `💪 Protein was on target ${protDays}/${logged.length} days — great consistency.`
+      : `🥩 Protein hit target only ${protDays}/${logged.length} days. Prioritise a protein source at every meal.`,
+  );
+
+  const avgFiber = Math.round(logged.reduce((s, d) => s + d.fiberG, 0) / (logged.length || 1));
+  lines.push(
+    avgFiber < 20
+      ? `🥦 Fiber averaged ${avgFiber}g/day — below the 25–38g guideline. Add more vegetables, legumes, or whole grains.`
+      : `🥦 Great fiber intake this week (avg ${avgFiber}g/day).`,
+  );
+
+  const avgSodium = Math.round(logged.reduce((s, d) => s + d.sodiumMg, 0) / (logged.length || 1));
+  if (avgSodium > 2500) {
+    lines.push(`🧂 Sodium averaged ${avgSodium}mg/day — above the 2,300mg limit. Limit processed foods and added salt.`);
+  }
+
+  lines.push(`📅 You logged ${logged.length}/7 days. ${logged.length >= 5 ? 'Excellent tracking discipline!' : 'Try to log every day for the most accurate insights.'}`);
+
+  return lines.join('\n');
+}
+
 // ── analyzeMealPhoto ──────────────────────────────────────────────────────────
 
 export async function analyzeMealPhoto(
