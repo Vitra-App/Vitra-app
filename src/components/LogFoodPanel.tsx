@@ -281,7 +281,8 @@ export function LogFoodPanel() {
 
         return (
           <div
-            className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+            className="fixed inset-x-0 top-0 z-50 flex flex-col justify-end bg-black/40"
+            style={{ bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))' }}
             onClick={() => setDetailItem(null)}
           >
             <div
