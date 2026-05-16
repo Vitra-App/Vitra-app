@@ -26,6 +26,14 @@ export async function GET(
       carbsG: true,
       fatG: true,
       fiberG: true,
+      sugarG: true,
+      sodiumMg: true,
+      cholesterolMg: true,
+      saturatedFatG: true,
+      potassiumMg: true,
+      vitaminDMcg: true,
+      calciumMg: true,
+      ironMg: true,
     },
   });
   if (!food) return NextResponse.json({ error: 'Not found' }, { status: 404 });

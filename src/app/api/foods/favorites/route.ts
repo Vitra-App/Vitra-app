@@ -14,6 +14,14 @@ const FOOD_SELECT = {
   carbsG: true,
   fatG: true,
   fiberG: true,
+  sugarG: true,
+  sodiumMg: true,
+  cholesterolMg: true,
+  saturatedFatG: true,
+  potassiumMg: true,
+  vitaminDMcg: true,
+  calciumMg: true,
+  ironMg: true,
   isCustom: true,
 };
 

@@ -16,6 +16,14 @@ type Food = {
   carbsG: number;
   fatG: number;
   fiberG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  cholesterolMg: number | null;
+  saturatedFatG: number | null;
+  potassiumMg: number | null;
+  vitaminDMcg: number | null;
+  calciumMg: number | null;
+  ironMg: number | null;
   isCustom: boolean;
 };
 
@@ -46,6 +54,19 @@ type Basket = { food: Food; servingCount: number };
 
 type Tab = 'recents' | 'favorites' | 'custom' | 'search' | 'scan';
 type Html5QrcodeCtor = typeof import('html5-qrcode').Html5Qrcode;
+
+const DRV = { fiberG: 28, sugarG: 50, sodiumMg: 2300, cholesterolMg: 300, saturatedFatG: 20, potassiumMg: 4700, vitaminDMcg: 20, calciumMg: 1300, ironMg: 18 };
+const MICRO_ROWS: { key: keyof typeof DRV; label: string; unit: string; color: string }[] = [
+  { key: 'fiberG',        label: 'Fiber',         unit: 'g',   color: 'bg-emerald-500' },
+  { key: 'sugarG',        label: 'Sugar',         unit: 'g',   color: 'bg-pink-500' },
+  { key: 'sodiumMg',      label: 'Sodium',        unit: 'mg',  color: 'bg-yellow-500' },
+  { key: 'cholesterolMg', label: 'Cholesterol',   unit: 'mg',  color: 'bg-orange-500' },
+  { key: 'saturatedFatG', label: 'Sat. fat',      unit: 'g',   color: 'bg-red-500' },
+  { key: 'potassiumMg',   label: 'Potassium',     unit: 'mg',  color: 'bg-violet-500' },
+  { key: 'vitaminDMcg',   label: 'Vitamin D',     unit: 'mcg', color: 'bg-amber-500' },
+  { key: 'calciumMg',     label: 'Calcium',       unit: 'mg',  color: 'bg-sky-500' },
+  { key: 'ironMg',        label: 'Iron',          unit: 'mg',  color: 'bg-rose-600' },
+];
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
 const MEAL_ICONS: Record<string, string> = {
@@ -102,6 +123,14 @@ function LogFoodInner() {
   const [barcodeCameraMode, setBarcodeCameraMode] = useState(false);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [pendingCount, setPendingCount] = useState(1);
+  const [pickerPage, setPickerPage] = useState(0);
+  const pickerSliderRef = useRef<HTMLDivElement>(null);
+
+  function goToPickerPage(p: number) {
+    if (!pickerSliderRef.current) return;
+    pickerSliderRef.current.scrollTo({ left: p * pickerSliderRef.current.offsetWidth, behavior: 'smooth' });
+    setPickerPage(p);
+  }
 
   const [dailyTargets, setDailyTargets] = useState<{ caloricTarget: number | null; proteinTargetG: number | null; carbTargetG: number | null; fatTargetG: number | null } | null>(null);
   const [dailyConsumed, setDailyConsumed] = useState<{ calories: number; protein: number; carbs: number; fat: number }>({ calories: 0, protein: 0, carbs: 0, fat: 0 });
@@ -460,6 +489,7 @@ function LogFoodInner() {
     const isFav = favoriteIds.has(food.id);
     function openPicker() {
       setPendingCount(inBasket?.servingCount ?? 1);
+      setPickerPage(0);
       setSelectedFood(food);
     }
     return (
@@ -834,127 +864,183 @@ function LogFoodInner() {
       </div>
 
       {/* Food serving picker sheet */}
-      {selectedFood && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
-          onClick={() => setSelectedFood(null)}
-        >
+      {selectedFood && (() => {
+        const f = selectedFood;
+        const cal  = Math.round(f.calories   * pendingCount);
+        const pro  = (f.proteinG  * pendingCount).toFixed(1);
+        const carb = (f.carbsG    * pendingCount).toFixed(1);
+        const fat  = (f.fatG      * pendingCount).toFixed(1);
+        const hasMicros = MICRO_ROWS.some((r) => f[r.key] != null);
+
+        return (
           <div
-            className="bg-white dark:bg-slate-900 rounded-t-2xl px-5 pt-5 pb-8 space-y-5 shadow-2xl max-w-[430px] mx-auto w-full"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
+            onClick={() => setSelectedFood(null)}
           >
-            {/* Header */}
-            <div className="flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900 dark:text-slate-100 leading-snug">{selectedFood.name}</p>
-                {selectedFood.brand && <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{selectedFood.brand}</p>}
-              </div>
-              <button onClick={() => setSelectedFood(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-0.5">×</button>
-            </div>
-
-            {/* Per-serving info */}
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-              <span className="font-medium">1 serving</span> = {selectedFood.servingSize}
-              <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
-              {Math.round(selectedFood.calories)} kcal
-              <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
-              {selectedFood.proteinG.toFixed(0)}g protein
-            </div>
-
-            {/* Stepper */}
-            <div className="flex items-center justify-center gap-6">
-              <button
-                onClick={() => setPendingCount((c) => Math.max(0.5, Math.round((c - 0.5) * 2) / 2))}
-                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >−</button>
-              <div className="text-center w-20">
-                <span className="text-3xl font-bold text-slate-900 dark:text-slate-100">{pendingCount}</span>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">servings</p>
-              </div>
-              <button
-                onClick={() => setPendingCount((c) => Math.round((c + 0.5) * 2) / 2)}
-                className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >+</button>
-            </div>
-
-            {/* Totals preview */}
-            <div className="flex justify-center gap-6 text-center">
-              <div>
-                <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{Math.round(selectedFood.calories * pendingCount)}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">kcal</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-green-600 dark:text-green-400">{(selectedFood.proteinG * pendingCount).toFixed(0)}g</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">protein</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{(selectedFood.carbsG * pendingCount).toFixed(0)}g</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">carbs</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{(selectedFood.fatG * pendingCount).toFixed(0)}g</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">fat</p>
-              </div>
-            </div>
-
-            {/* Daily progress */}
-            {dailyTargets && (() => {
-              const addCal = Math.round(selectedFood.calories * pendingCount);
-              const addPro = Math.round(selectedFood.proteinG * pendingCount);
-              const addCarb = Math.round(selectedFood.carbsG * pendingCount);
-              const addFat = Math.round(selectedFood.fatG * pendingCount);
-              const tCal = dailyTargets.caloricTarget ?? 2000;
-              const tPro = dailyTargets.proteinTargetG ?? 150;
-              const tCarb = dailyTargets.carbTargetG ?? 200;
-              const tFat = dailyTargets.fatTargetG ?? 65;
-              const rows = [
-                { label: 'Calories', consumed: dailyConsumed.calories, add: addCal, target: tCal, color: 'bg-slate-500' },
-                { label: 'Protein', consumed: dailyConsumed.protein, add: addPro, target: tPro, color: 'bg-green-500' },
-                { label: 'Carbs', consumed: dailyConsumed.carbs, add: addCarb, target: tCarb, color: 'bg-blue-500' },
-                { label: 'Fat', consumed: dailyConsumed.fat, add: addFat, target: tFat, color: 'bg-amber-500' },
-              ];
-              return (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Daily progress after adding</p>
-                  {rows.map(({ label, consumed, add, target, color }) => {
-                    const afterPct = Math.min(100, Math.round(((consumed + add) / target) * 100));
-                    const consumedPct = Math.min(100, Math.round((consumed / target) * 100));
-                    const remaining = Math.max(0, target - consumed - add);
-                    return (
-                      <div key={label}>
-                        <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                          <span>{label}</span>
-                          <span>{Math.round(consumed + add)} / {target}{label === 'Calories' ? ' kcal' : 'g'} <span className="text-slate-400">({remaining}{label === 'Calories' ? ' kcal' : 'g'} left)</span></span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden relative">
-                          <div className={`absolute inset-y-0 left-0 rounded-full opacity-40 ${color}`} style={{ width: `${consumedPct}%` }} />
-                          <div className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${afterPct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-
-            {/* Add button */}
-            <button
-              onClick={() => {
-                const existing = basket.find((i) => i.food.id === selectedFood.id);
-                if (existing) {
-                  setBasket((prev) => prev.map((i) => i.food.id === selectedFood.id ? { ...i, servingCount: pendingCount } : i));
-                } else {
-                  addToBasket(selectedFood, pendingCount);
-                }
-                setSelectedFood(null);
-              }}
-              className="btn-primary w-full py-3 text-base font-semibold"
+            <div
+              className="bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl max-w-[430px] mx-auto w-full flex flex-col"
+              style={{ maxHeight: '88vh' }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {basket.find((i) => i.food.id === selectedFood.id) ? 'Update serving' : 'Add to meal'}
-            </button>
+              {/* Drag handle */}
+              <div className="flex justify-center pt-3 pb-1 flex-none">
+                <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-start gap-3 px-5 pb-3 flex-none">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-900 dark:text-slate-100 leading-snug">{f.name}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                    {f.brand ? `${f.brand} · ` : ''}1 serving = {f.servingSize}
+                  </p>
+                </div>
+                <button onClick={() => setSelectedFood(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-0.5">×</button>
+              </div>
+
+              {/* Stepper */}
+              <div className="flex items-center justify-center gap-6 px-5 pb-4 flex-none">
+                <button
+                  onClick={() => setPendingCount((c) => Math.max(0.5, Math.round((c - 0.5) * 2) / 2))}
+                  className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >−</button>
+                <div className="text-center w-20">
+                  <span className="text-3xl font-bold text-slate-900 dark:text-slate-100">{pendingCount}</span>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">servings</p>
+                </div>
+                <button
+                  onClick={() => setPendingCount((c) => Math.round((c + 0.5) * 2) / 2)}
+                  className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >+</button>
+              </div>
+
+              {/* Swipeable cards: Macros | Daily Progress | Micros */}
+              <div
+                ref={pickerSliderRef}
+                className="flex overflow-x-auto snap-x snap-mandatory flex-none"
+                style={{ scrollbarWidth: 'none' }}
+                onScroll={() => {
+                  if (!pickerSliderRef.current) return;
+                  setPickerPage(Math.round(pickerSliderRef.current.scrollLeft / pickerSliderRef.current.offsetWidth));
+                }}
+              >
+                {/* Card 0 — Macros */}
+                <div className="snap-start shrink-0 w-full px-5 pb-2">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-4 flex justify-between text-center">
+                    <div>
+                      <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{cal}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">kcal</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-green-600 dark:text-green-400">{pro}g</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">protein</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{carb}g</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">carbs</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{fat}g</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">fat</p>
+                    </div>
+                  </div>
+                  <p className="text-center text-[10px] text-slate-400 dark:text-slate-500 mt-2">swipe → for daily targets &amp; micros</p>
+                </div>
+
+                {/* Card 1 — Daily progress */}
+                {dailyTargets && (() => {
+                  const tCal = dailyTargets.caloricTarget ?? 2000;
+                  const tPro = dailyTargets.proteinTargetG ?? 150;
+                  const tCarb = dailyTargets.carbTargetG ?? 200;
+                  const tFat = dailyTargets.fatTargetG ?? 65;
+                  const rows = [
+                    { label: 'Calories', consumed: dailyConsumed.calories, add: cal,                    target: tCal,  unit: 'kcal', color: 'bg-slate-500' },
+                    { label: 'Protein',  consumed: dailyConsumed.protein,  add: Number(pro),             target: tPro,  unit: 'g',    color: 'bg-green-500' },
+                    { label: 'Carbs',    consumed: dailyConsumed.carbs,    add: Number(carb),            target: tCarb, unit: 'g',    color: 'bg-blue-500' },
+                    { label: 'Fat',      consumed: dailyConsumed.fat,      add: Number(fat),             target: tFat,  unit: 'g',    color: 'bg-amber-500' },
+                  ];
+                  return (
+                    <div className="snap-start shrink-0 w-full px-5 pb-2 space-y-2.5">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Daily targets after adding</p>
+                      {rows.map(({ label, consumed, add, target, unit, color }) => {
+                        const afterPct = Math.min(100, Math.round(((consumed + add) / target) * 100));
+                        const consumedPct = Math.min(100, Math.round((consumed / target) * 100));
+                        const remaining = Math.max(0, target - consumed - add);
+                        return (
+                          <div key={label}>
+                            <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+                              <span>{label}</span>
+                              <span>{Math.round(consumed + add)}/{target}{unit} <span className="text-slate-400">({remaining} left)</span></span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden relative">
+                              <div className={`absolute inset-y-0 left-0 rounded-full opacity-40 ${color}`} style={{ width: `${consumedPct}%` }} />
+                              <div className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${afterPct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Card 2 — Micronutrients */}
+                {hasMicros && (
+                  <div className="snap-start shrink-0 w-full px-5 pb-2 overflow-y-auto" style={{ maxHeight: '38vh' }}>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">% Daily Value</p>
+                    <div className="space-y-3">
+                      {MICRO_ROWS.filter((r) => f[r.key] != null).map(({ key, label, unit, color }) => {
+                        const raw = (f[key] as number) * pendingCount;
+                        const pct = Math.min(100, Math.round((raw / DRV[key]) * 100));
+                        const display = unit === 'mg' ? Math.round(raw) : raw < 10 ? raw.toFixed(1) : Math.round(raw);
+                        return (
+                          <div key={key}>
+                            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300 mb-1">
+                              <span>{label}</span>
+                              <span className="text-slate-400">{display}{unit} <span className="font-semibold text-slate-700 dark:text-slate-200">{pct}% DV</span></span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Dot indicators */}
+              <div className="flex justify-center gap-1.5 pt-2 pb-1 flex-none">
+                {([0, dailyTargets ? 1 : null, hasMicros ? (dailyTargets ? 2 : 1) : null] as (number|null)[]).filter((p) => p !== null).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => goToPickerPage(p!)}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${pickerPage === p ? 'bg-brand-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                  />
+                ))}
+              </div>
+
+              {/* Add button */}
+              <div className="px-5 pt-2 pb-6 flex-none border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => {
+                    const existing = basket.find((i) => i.food.id === f.id);
+                    if (existing) {
+                      setBasket((prev) => prev.map((i) => i.food.id === f.id ? { ...i, servingCount: pendingCount } : i));
+                    } else {
+                      addToBasket(f, pendingCount);
+                    }
+                    setSelectedFood(null);
+                  }}
+                  className="btn-primary w-full py-3 text-base font-semibold"
+                >
+                  {basket.find((i) => i.food.id === f.id) ? 'Update serving' : 'Add to meal'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Basket — sits above nav bar */}
       {editLoading ? (
