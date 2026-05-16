@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -71,7 +71,15 @@ export function LogFoodPanel() {
   const [loaded, setLoaded] = useState(false);
   const [detailItem, setDetailItem] = useState<RichItem | null>(null);
   const [detailCount, setDetailCount] = useState(1);
+  const [detailPage, setDetailPage] = useState(0);
+  const sliderRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
+
+  function goToPage(p: number) {
+    if (!sliderRef.current) return;
+    sliderRef.current.scrollTo({ left: p * sliderRef.current.offsetWidth, behavior: 'smooth' });
+    setDetailPage(p);
+  }
 
   function loadMeals() {
     const today = new Date().toISOString().slice(0, 10);
@@ -207,7 +215,7 @@ export function LogFoodPanel() {
                     >
                       {/* Tap row to open detail sheet */}
                       <button
-                        onClick={() => { setDetailItem(item); setDetailCount(item.servingCount); }}
+                        onClick={() => { setDetailItem(item); setDetailCount(item.servingCount); setDetailPage(0); }}
                         className="flex-1 min-w-0 text-left"
                       >
                         <p className="text-xs text-slate-700 dark:text-slate-300 truncate leading-snug">
@@ -265,10 +273,11 @@ export function LogFoodPanel() {
       {detailItem && (() => {
         const item = detailItem;
         const scale = detailCount / item.servingCount;
-        const cal  = Math.round(item.calories      * scale);
+        const cal  = Math.round(item.calories   * scale);
         const pro  = (item.proteinG  * scale).toFixed(1);
         const carb = (item.carbsG    * scale).toFixed(1);
         const fat  = (item.fatG      * scale).toFixed(1);
+        const hasMicros = MICRO_ROWS.some((r) => item[r.key] != null);
 
         return (
           <div
@@ -276,22 +285,28 @@ export function LogFoodPanel() {
             onClick={() => setDetailItem(null)}
           >
             <div
-              className="bg-white dark:bg-slate-900 rounded-t-2xl px-5 pt-5 pb-8 space-y-5 shadow-2xl max-w-[430px] mx-auto w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl max-w-[430px] mx-auto w-full flex flex-col"
+              style={{ maxHeight: '88vh' }}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Drag handle */}
+              <div className="flex justify-center pt-3 pb-1 flex-none">
+                <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+              </div>
+
               {/* Header */}
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-3 px-5 pb-3 flex-none">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-900 dark:text-slate-100 leading-snug">{item.food.name}</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                     {item.food.brand ? `${item.food.brand} · ` : ''}{item.food.servingSize} per serving
                   </p>
                 </div>
-                <button onClick={() => setDetailItem(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">×</button>
+                <button onClick={() => setDetailItem(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-0.5">×</button>
               </div>
 
               {/* Stepper */}
-              <div className="flex items-center justify-center gap-6">
+              <div className="flex items-center justify-center gap-6 px-5 pb-4 flex-none">
                 <button
                   onClick={() => setDetailCount((c) => Math.max(0.5, Math.round((c - 0.5) * 2) / 2))}
                   className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xl font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -306,51 +321,82 @@ export function LogFoodPanel() {
                 >+</button>
               </div>
 
-              {/* Macros */}
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3 flex justify-between text-center">
-                <div>
-                  <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{cal}</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">kcal</p>
+              {/* Swipeable cards: Macros | Micros */}
+              <div
+                ref={sliderRef}
+                className="flex overflow-x-auto snap-x snap-mandatory flex-none"
+                style={{ scrollbarWidth: 'none' }}
+                onScroll={() => {
+                  if (!sliderRef.current) return;
+                  setDetailPage(Math.round(sliderRef.current.scrollLeft / sliderRef.current.offsetWidth));
+                }}
+              >
+                {/* Card 0 — Macros */}
+                <div className="snap-start shrink-0 w-full px-5 pb-2">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-4 flex justify-between text-center">
+                    <div>
+                      <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{cal}</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">kcal</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-green-600 dark:text-green-400">{pro}g</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">protein</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{carb}g</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">carbs</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{fat}g</p>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">fat</p>
+                    </div>
+                  </div>
+                  {hasMicros && (
+                    <p className="text-center text-[10px] text-slate-400 dark:text-slate-500 mt-2">← swipe for micronutrients</p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{pro}g</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">protein</p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{carb}g</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">carbs</p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{fat}g</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">fat</p>
-                </div>
+
+                {/* Card 1 — Micronutrients */}
+                {hasMicros && (
+                  <div className="snap-start shrink-0 w-full px-5 pb-2 overflow-y-auto" style={{ maxHeight: '40vh' }}>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">% Daily Value</p>
+                    <div className="space-y-3">
+                      {MICRO_ROWS.filter((r) => item[r.key] != null).map(({ key, label, unit, color }) => {
+                        const raw = (item[key] as number) * scale;
+                        const pct = Math.min(100, Math.round((raw / DRV[key]) * 100));
+                        const display = unit === 'mg' ? Math.round(raw) : raw < 10 ? raw.toFixed(1) : Math.round(raw);
+                        return (
+                          <div key={key}>
+                            <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300 mb-1">
+                              <span>{label}</span>
+                              <span className="text-slate-400">{display}{unit} <span className="font-semibold text-slate-700 dark:text-slate-200">{pct}% DV</span></span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Micronutrients */}
-              {MICRO_ROWS.some((r) => item[r.key] != null) && (
-                <div className="space-y-2.5">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Micronutrients · % Daily Value</p>
-                  {MICRO_ROWS.filter((r) => item[r.key] != null).map(({ key, label, unit, color }) => {
-                    const raw = (item[key] as number) * scale;
-                    const pct = Math.min(100, Math.round((raw / DRV[key]) * 100));
-                    const display = unit === 'mg' ? Math.round(raw) : raw < 10 ? raw.toFixed(1) : Math.round(raw);
-                    return (
-                      <div key={key}>
-                        <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300 mb-1">
-                          <span>{label}</span>
-                          <span className="text-slate-400">{display}{unit} <span className="font-semibold text-slate-600 dark:text-slate-200">{pct}%</span></span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
+              {/* Dot indicators */}
+              {hasMicros && (
+                <div className="flex justify-center gap-1.5 pt-2 pb-1 flex-none">
+                  {[0, 1].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p)}
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${detailPage === p ? 'bg-brand-500' : 'bg-slate-300 dark:bg-slate-600'}`}
+                    />
+                  ))}
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex gap-3">
+              <div className="flex gap-3 px-5 pt-3 pb-6 flex-none border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => { deleteItem(item.meal, item.id); setDetailItem(null); }}
                   className="btn-secondary flex-none px-4 py-2.5 text-sm text-red-500 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
