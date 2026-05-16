@@ -36,6 +36,15 @@ export interface MealPhotoAnalysis {
     proteinG: number;
     carbsG: number;
     fatG: number;
+    fiberG: number;
+    sugarG: number;
+    sodiumMg: number;
+    cholesterolMg: number;
+    saturatedFatG: number;
+    potassiumMg: number;
+    vitaminDMcg: number;
+    calciumMg: number;
+    ironMg: number;
   }>;
   totalCalories: number;
   totalProteinG: number;
@@ -186,7 +195,7 @@ export async function analyzeMealPhoto(
         role: 'system',
         content: `You are a nutrition analysis assistant. When given a meal photo, identify each DISTINCT food item, estimate portion sizes, and return a JSON object with the following structure:
 {
-  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0 }],
+  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
   "totalCalories": 0,
   "totalProteinG": 0,
   "totalCarbsG": 0,
@@ -194,7 +203,7 @@ export async function analyzeMealPhoto(
   "confidenceScore": 0.0,
   "notes": ""
 }
-IMPORTANT: Group identical items — for example, 4 slices of pizza should be ONE item with quantity=4, NOT four separate items. The calories/protein/carbs/fat fields represent the values for ONE unit of the estimatedServingSize. Be conservative with estimates. Use any description provided by the user to improve accuracy. Confidence score should reflect image clarity and identifiability.`,
+IMPORTANT: Group identical items — for example, 4 slices of pizza should be ONE item with quantity=4, NOT four separate items. The calories/protein/carbs/fat/fiber/sugar/sodium/cholesterol/saturatedFat/potassium/vitaminD/calcium/iron fields represent the values for ONE unit of the estimatedServingSize. Estimate ALL nutrient fields as best you can — use typical nutritional database values for the identified food and portion size. Be conservative with estimates. Use any description provided by the user to improve accuracy. Confidence score should reflect image clarity and identifiability.`,
       },
       {
         role: 'user',
@@ -218,9 +227,9 @@ IMPORTANT: Group identical items — for example, 4 slices of pizza should be ON
 function getMockMealPhotoAnalysis(): MealPhotoAnalysis {
   return {
     items: [
-      { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', quantity: 1, calories: 248, proteinG: 46, carbsG: 0, fatG: 5.4 },
-      { name: 'Brown Rice', estimatedServingSize: '1 cup', quantity: 1, calories: 216, proteinG: 5, carbsG: 45, fatG: 1.8 },
-      { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', quantity: 1, calories: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6 },
+      { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', quantity: 1, calories: 248, proteinG: 46, carbsG: 0, fatG: 5.4, fiberG: 0, sugarG: 0, sodiumMg: 74, cholesterolMg: 125, saturatedFatG: 1.5, potassiumMg: 440, vitaminDMcg: 0.1, calciumMg: 15, ironMg: 1.1 },
+      { name: 'Brown Rice', estimatedServingSize: '1 cup', quantity: 1, calories: 216, proteinG: 5, carbsG: 45, fatG: 1.8, fiberG: 3.5, sugarG: 0.7, sodiumMg: 10, cholesterolMg: 0, saturatedFatG: 0.4, potassiumMg: 154, vitaminDMcg: 0, calciumMg: 20, ironMg: 1.0 },
+      { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', quantity: 1, calories: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6, fiberG: 5.1, sugarG: 2.6, sodiumMg: 64, cholesterolMg: 0, saturatedFatG: 0.1, potassiumMg: 457, vitaminDMcg: 0, calciumMg: 62, ironMg: 1.1 },
     ],
     totalCalories: 519,
     totalProteinG: 54.7,

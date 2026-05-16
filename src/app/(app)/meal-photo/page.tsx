@@ -75,7 +75,7 @@ export default function MealPhotoPage() {
   }
   function removeItem(id: string) { setItems((prev) => prev.filter((i) => i.id !== id)); }
   function addItem() {
-    setItems((prev) => [...prev, { id: Date.now().toString(), name: "", estimatedServingSize: "1 serving", quantity: 1, calories: 0, proteinG: 0, carbsG: 0, fatG: 0 }]);
+    setItems((prev) => [...prev, { id: Date.now().toString(), name: "", estimatedServingSize: "1 serving", quantity: 1, calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0, sugarG: 0, sodiumMg: 0, cholesterolMg: 0, saturatedFatG: 0, potassiumMg: 0, vitaminDMcg: 0, calciumMg: 0, ironMg: 0 }]);
   }
   function reset() { setPreview(null); setBase64(null); setAnalysis(null); setItems([]); setError(null); }
 

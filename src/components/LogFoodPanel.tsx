@@ -65,10 +65,18 @@ function defaultMealForNow() {
   return 'snack';
 }
 
+type DailyTargets = {
+  caloricTarget: number | null;
+  proteinTargetG: number | null;
+  carbTargetG: number | null;
+  fatTargetG: number | null;
+};
+
 export function LogFoodPanel() {
   const router = useRouter();
   const [meals, setMeals] = useState<LoggedMeal[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [dailyTargets, setDailyTargets] = useState<DailyTargets | null>(null);
   const [detailItem, setDetailItem] = useState<RichItem | null>(null);
   const [detailCount, setDetailCount] = useState(1);
   const [detailPage, setDetailPage] = useState(0);
@@ -92,7 +100,22 @@ export function LogFoodPanel() {
       .catch(() => setLoaded(true));
   }
 
-  useEffect(() => { loadMeals(); }, []);
+  useEffect(() => {
+    loadMeals();
+    fetch('/api/user/profile')
+      .then((r) => r.json())
+      .then((p) => {
+        if (p && (p.caloricTarget || p.proteinTargetG)) {
+          setDailyTargets({
+            caloricTarget: p.caloricTarget ?? 2000,
+            proteinTargetG: p.proteinTargetG ?? 150,
+            carbTargetG: p.carbTargetG ?? 200,
+            fatTargetG: p.fatTargetG ?? 65,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   async function deleteItem(meal: LoggedMeal, itemId: string) {
     // Optimistically remove from UI immediately
@@ -279,6 +302,13 @@ export function LogFoodPanel() {
         const fat  = (item.fatG      * scale).toFixed(1);
         const hasMicros = MICRO_ROWS.some((r) => item[r.key] != null);
 
+        // Daily totals (all logged items, replace this item with current serving)
+        const allLogged = meals.flatMap((m) => m.mealItems);
+        const dailyCal  = allLogged.reduce((s, i) => s + (i.id === item.id ? cal  : Math.round(i.calories)), 0);
+        const dailyPro  = allLogged.reduce((s, i) => s + (i.id === item.id ? Number(pro)  : i.proteinG), 0);
+        const dailyCarb = allLogged.reduce((s, i) => s + (i.id === item.id ? Number(carb) : i.carbsG), 0);
+        const dailyFat  = allLogged.reduce((s, i) => s + (i.id === item.id ? Number(fat)  : i.fatG), 0);
+
         return (
           <div
             className="fixed inset-x-0 top-0 z-50 flex flex-col justify-end bg-black/40"
@@ -337,19 +367,35 @@ export function LogFoodPanel() {
                   <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-4 flex justify-between text-center">
                     <div>
                       <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{cal}</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">kcal</p>
+                      {dailyTargets ? (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{Math.round(dailyCal)}/{dailyTargets.caloricTarget ?? 2000}</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 mt-0.5">kcal</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xl font-bold text-green-600 dark:text-green-400">{pro}g</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">protein</p>
+                      {dailyTargets ? (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{dailyPro.toFixed(0)}/{dailyTargets.proteinTargetG ?? 150}g</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 mt-0.5">protein</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{carb}g</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">carbs</p>
+                      {dailyTargets ? (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{dailyCarb.toFixed(0)}/{dailyTargets.carbTargetG ?? 200}g</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 mt-0.5">carbs</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{fat}g</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">fat</p>
+                      {dailyTargets ? (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{dailyFat.toFixed(0)}/{dailyTargets.fatTargetG ?? 65}g</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 mt-0.5">fat</p>
+                      )}
                     </div>
                   </div>
                   {hasMicros && (
