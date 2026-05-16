@@ -368,7 +368,7 @@ export function LogFoodPanel() {
                     <div>
                       <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{cal}</p>
                       {dailyTargets ? (
-                        <p className="text-[10px] text-slate-400 mt-0.5">{Math.round(dailyCal)}/{dailyTargets.caloricTarget ?? 2000}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{Math.round(dailyCal)}/{dailyTargets.caloricTarget ?? 2000} kcal</p>
                       ) : (
                         <p className="text-[10px] text-slate-400 mt-0.5">kcal</p>
                       )}
