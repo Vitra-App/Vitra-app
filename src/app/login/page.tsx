@@ -2,13 +2,18 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { VitraLogo } from '@/components/VitraLogo';
 
+const WEBSITE_URL = 'https://vitrawebsite-production.up.railway.app';
+
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<'login' | 'register'>(
+    searchParams.get('tab') === 'register' ? 'register' : 'login'
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -60,6 +65,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-white dark:from-slate-950 dark:to-slate-900 px-4">
       <div className="w-full max-w-sm">
+        {/* Back to website */}
+        <div className="mb-6 text-center">
+          <a
+            href={WEBSITE_URL}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back to website
+          </a>
+        </div>
+
         {/* Logo */}
         <div className="text-center mb-8">
           <VitraLogo size="lg" className="mb-2" />
@@ -185,9 +203,9 @@ export default function LoginPage() {
 
         <p className="text-xs text-center text-slate-400 mt-6">
           By signing in you agree to our{' '}
-          <Link href="#" className="underline hover:text-brand-600">Terms</Link>{' '}
+          <a href={`${WEBSITE_URL}/terms`} className="underline hover:text-brand-600">Terms</a>{' '}
           and{' '}
-          <Link href="#" className="underline hover:text-brand-600">Privacy Policy</Link>.
+          <a href={`${WEBSITE_URL}/privacy`} className="underline hover:text-brand-600">Privacy Policy</a>.
         </p>
       </div>
     </div>
