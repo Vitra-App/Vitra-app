@@ -13,7 +13,7 @@ const mealSchema = z.object({
       servingCount: z.number().positive(),
     }),
   ).min(1),
-  loggedAt: z.string().datetime().optional(),
+  loggedAt: z.string().datetime({ offset: true }).optional(),
 });
 
 export async function POST(req: NextRequest) {

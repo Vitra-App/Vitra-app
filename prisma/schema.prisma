@@ -123,6 +123,7 @@ model Food {
   favoritedBy  FavoriteFood[]
 
   @@index([name])
+  @@unique([source, externalId])
 }
 
 // ─── Meal logging ────────────────────────────────────────────────────────────
