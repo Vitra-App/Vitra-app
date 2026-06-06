@@ -84,51 +84,44 @@ export async function generateDailyNutritionOutlook(
   dailyLog: DailyLog,
   weeklyTrends: WeeklyTrends,
   bloodwork: BloodworkMarker[],
+  foodsEaten: Array<{ mealType: string; name: string; calories: number; servingCount: number }> = [],
 ): Promise<string> {
   if (!hasOpenAIKey()) {
     return generateMockDailyOutlook(profile, dailyLog, weeklyTrends);
   }
 
-  const system = `You are a sharp, friendly nutrition coach giving a quick daily check-in. 
-Be direct, specific, and motivating — no fluff. 
-Never diagnose or recommend medication.
-Respond with exactly 3-4 bullet points using this format (emoji + one punchy sentence each):
-🔥 ...
-💪 ...
-⚡ ...
-(optional 4th bullet)
-No headers, no bold text, no numbered lists, no extra commentary.`;
+  const calPct = profile?.caloricTarget ? Math.round((dailyLog.calories / profile.caloricTarget) * 100) : null;
+  const protPct = profile?.proteinTargetG ? Math.round((dailyLog.proteinG / profile.proteinTargetG) * 100) : null;
 
-  const bloodworkSummary =
-    bloodwork.length > 0
-      ? bloodwork
-          .map((b) => `${b.markerName}: ${b.value} ${b.unit} (ref: ${b.referenceMin ?? '?'}–${b.referenceMax ?? '?'})`)
-          .join(', ')
-      : 'None provided';
+  const mealSummary = foodsEaten.length > 0
+    ? foodsEaten.map(f => `${f.mealType}: ${f.name} (${f.calories} kcal)`).join('\n')
+    : 'Nothing logged yet today';
 
-  const user = `
-User goal: ${profile?.goal ?? 'not set'}
-Caloric target: ${profile?.caloricTarget ?? 'not set'} kcal
-Protein target: ${profile?.proteinTargetG ?? 'not set'} g
+  const bloodworkSummary = bloodwork.length > 0
+    ? bloodwork.map((b) => `${b.markerName}: ${b.value} ${b.unit}`).join(', ')
+    : null;
 
-Today's intake:
-- Calories: ${dailyLog.calories} kcal
-- Protein: ${dailyLog.proteinG} g
-- Carbs: ${dailyLog.carbsG} g
-- Fat: ${dailyLog.fatG} g
-- Fiber: ${dailyLog.fiberG} g
-- Vitamin D: ${dailyLog.vitaminDMcg} mcg
-- Iron: ${dailyLog.ironMg} mg
-- Calcium: ${dailyLog.calciumMg} mg
+  const system = `You are a personal nutrition coach reviewing someone's actual food log. 
+Write 3 short, direct observations about what they actually ate today — reference the real foods by name.
+Rules:
+- Reference specific foods they logged (e.g. "The bagels gave you..." not "Your carb intake...") 
+- Keep each point to one sentence, max 15 words
+- Do not start any point with "You" — vary the sentence openers
+- Do not use the word "ensuring", "optimize", "crucial", "prioritize", "intake", or "overall"
+- No generic nutrition advice that could apply to anyone
+- If nothing was logged, just note the day is still early
+- Format: exactly 3 bullet points, each starting with a single relevant emoji then a space
+- No headers, no bold, no numbered lists`;
 
-Weekly trends:
-- Avg calories: ${weeklyTrends.avgCalories}
-- Days under protein target (last 7): ${weeklyTrends.daysUnderProteinTarget}
-- Days logged: ${weeklyTrends.daysLogged}
+  const user = `Goal: ${profile?.goal ?? 'maintain'}
+Calorie target: ${profile?.caloricTarget ?? 2000} kcal | Eaten: ${dailyLog.calories} kcal${calPct !== null ? \` (${calPct}%)\` : ''}
+Protein target: ${profile?.proteinTargetG ?? 150}g | Eaten: ${dailyLog.proteinG}g${protPct !== null ? \` (${protPct}%)\` : ''}
+Carbs: ${dailyLog.carbsG}g | Fat: ${dailyLog.fatG}g | Fiber: ${dailyLog.fiberG}g
 
-Bloodwork markers: ${bloodworkSummary}
+What they actually ate today:
+${mealSummary}
 
-Generate 3–5 plain-English nutrition insights for today.`;
+Weekly context: avg ${weeklyTrends.avgCalories} kcal/day, ${weeklyTrends.daysLogged} days logged this week${bloodworkSummary ? \`\nBloodwork: \${bloodworkSummary}\` : ''}`;
 
   return callOpenAI(system, user);
 }
