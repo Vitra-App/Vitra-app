@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 
-// GET /api/nutrition/daily?date=YYYY-MM-DD
-// Returns the daily nutrition summary for the given date (defaults to today).
-// Used by the Vitra iOS app dashboard.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,27 +13,19 @@ export async function GET(req: NextRequest) {
   const summary = await prisma.dailyNutritionSummary.findUnique({
     where: { userId_date: { userId: session.user.id, date: day } },
     select: {
-      calories: true,
-      proteinG: true,
-      carbsG: true,
-      fatG: true,
-      fiberG: true,
-      sugarG: true,
-      sodiumMg: true,
-      waterMl: true,
+      calories: true, proteinG: true, carbsG: true, fatG: true,
+      fiberG: true, sugarG: true, sodiumMg: true, waterMl: true,
+      saturatedFatG: true, cholesterolMg: true, potassiumMg: true,
+      vitaminDMcg: true, calciumMg: true, ironMg: true,
     },
   });
 
   return NextResponse.json(
     summary ?? {
-      calories: 0,
-      proteinG: 0,
-      carbsG: 0,
-      fatG: 0,
-      fiberG: 0,
-      sugarG: 0,
-      sodiumMg: 0,
-      waterMl: 0,
+      calories: 0, proteinG: 0, carbsG: 0, fatG: 0,
+      fiberG: 0, sugarG: 0, sodiumMg: 0, waterMl: 0,
+      saturatedFatG: 0, cholesterolMg: 0, potassiumMg: 0,
+      vitaminDMcg: 0, calciumMg: 0, ironMg: 0,
     },
   );
 }
