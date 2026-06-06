@@ -1,16 +1,8 @@
-/**
- * POST /api/auth/mobile-signin
- *
- * CSRF-free credentials endpoint for the iOS app.
- * Validates email + password, then issues a NextAuth v5-compatible
- * session cookie (authjs.session-token) using @auth/core/jwt encode.
- */
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { encode } from '@auth/core/jwt';
 import { prisma } from '@/lib/prisma';
 
-const COOKIE_NAME = 'authjs.session-token';
 const MAX_AGE = 30 * 24 * 60 * 60; // 30 days
 
 export async function POST(req: NextRequest) {
@@ -31,7 +23,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    // Build a NextAuth v5-compatible JWT token
+    // In production (HTTPS), NextAuth v5 uses __Secure- prefix on cookie name and salt
+    const isSecure = process.env.NODE_ENV === 'production';
+    const cookieName = isSecure ? '__Secure-authjs.session-token' : 'authjs.session-token';
+
     const secret = process.env.AUTH_SECRET!;
     const token = await encode({
       token: {
@@ -42,18 +37,20 @@ export async function POST(req: NextRequest) {
         picture: user.image ?? undefined,
       },
       secret,
-      salt: COOKIE_NAME,
+      salt: cookieName,   // salt MUST match the cookie name NextAuth uses to decode
       maxAge: MAX_AGE,
     });
 
     const response = NextResponse.json({
       ok: true,
       token,
+      cookieName,  // tell iOS which cookie name to use
       user: { id: user.id, email: user.email, name: user.name },
     });
 
-    response.cookies.set(COOKIE_NAME, token, {
+    response.cookies.set(cookieName, token, {
       httpOnly: true,
+      secure: isSecure,
       sameSite: 'lax',
       path: '/',
       maxAge: MAX_AGE,
