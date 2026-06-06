@@ -113,15 +113,19 @@ Rules:
 - Format: exactly 3 bullet points, each starting with a single relevant emoji then a space
 - No headers, no bold, no numbered lists`;
 
+  const calPctStr = calPct !== null ? ` (${calPct}%)` : '';
+  const protPctStr = protPct !== null ? ` (${protPct}%)` : '';
+  const bloodworkLine = bloodworkSummary ? `\nBloodwork: ${bloodworkSummary}` : '';
+
   const user = `Goal: ${profile?.goal ?? 'maintain'}
-Calorie target: ${profile?.caloricTarget ?? 2000} kcal | Eaten: ${dailyLog.calories} kcal${calPct !== null ? \` (${calPct}%)\` : ''}
-Protein target: ${profile?.proteinTargetG ?? 150}g | Eaten: ${dailyLog.proteinG}g${protPct !== null ? \` (${protPct}%)\` : ''}
+Calorie target: ${profile?.caloricTarget ?? 2000} kcal | Eaten: ${dailyLog.calories} kcal${calPctStr}
+Protein target: ${profile?.proteinTargetG ?? 150}g | Eaten: ${dailyLog.proteinG}g${protPctStr}
 Carbs: ${dailyLog.carbsG}g | Fat: ${dailyLog.fatG}g | Fiber: ${dailyLog.fiberG}g
 
 What they actually ate today:
 ${mealSummary}
 
-Weekly context: avg ${weeklyTrends.avgCalories} kcal/day, ${weeklyTrends.daysLogged} days logged this week${bloodworkSummary ? \`\nBloodwork: \${bloodworkSummary}\` : ''}`;
+Weekly context: avg ${weeklyTrends.avgCalories} kcal/day, ${weeklyTrends.daysLogged} days logged this week${bloodworkLine}`;
 
   return callOpenAI(system, user);
 }

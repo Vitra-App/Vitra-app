@@ -32,7 +32,7 @@ export async function POST() {
       prisma.meal.findMany({
         where: { userId, loggedAt: { gte: dayStart } },
         include: {
-          items: {
+          mealItems: {
             include: { food: { select: { name: true, brand: true } } }
           }
         }
@@ -52,7 +52,7 @@ export async function POST() {
 
     // Build a flat list of foods actually eaten today with meal type
     const foodsEaten = todayMeals.flatMap(meal =>
-      meal.items.map(item => ({
+      meal.mealItems.map(item => ({
         mealType: meal.mealType,
         name: item.food?.name ?? 'Unknown food',
         calories: Math.round(item.calories),
