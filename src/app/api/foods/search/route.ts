@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       saturatedFatG: true, potassiumMg: true, vitaminDMcg: true,
       calciumMg: true, ironMg: true,
     },
-    take: 10,
+    take: 20,
     orderBy: { name: 'asc' },
   });
 
