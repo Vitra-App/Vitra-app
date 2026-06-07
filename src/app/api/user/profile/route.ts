@@ -102,3 +102,16 @@ export async function GET() {
   const profile = await prisma.userProfile.findUnique({ where: { userId: session.user.id } });
   return NextResponse.json(profile);
 }
+
+// ── DELETE /api/user/profile  (delete account) ────────────────────────────────
+export async function DELETE() {
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const userId = session.user.id;
+
+  // Cascade delete via Prisma (relies on schema onDelete: Cascade)
+  await prisma.user.delete({ where: { id: userId } });
+
+  return NextResponse.json({ ok: true });
+}

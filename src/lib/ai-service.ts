@@ -196,29 +196,38 @@ export async function generateWeeklySummary(
     return generateMockWeeklySummary(profile, days);
   }
 
-  const system = `You are a friendly nutrition coach writing a weekly check-in summary.
-Be concise, specific, and motivating. No fluff.
-Respond with 4–6 bullet points (emoji + one sentence each). No headers, no bold, no numbered lists.`;
-
   const avgCal = Math.round(daysLogged.reduce((s, d) => s + d.calories, 0) / daysLogged.length);
   const avgProt = Math.round(daysLogged.reduce((s, d) => s + d.proteinG, 0) / daysLogged.length);
-  const avgFiber = Math.round(daysLogged.reduce((s, d) => s + d.fiberG, 0) / daysLogged.length);
-  const avgSodium = Math.round(daysLogged.reduce((s, d) => s + d.sodiumMg, 0) / daysLogged.length);
+  const avgCarb = Math.round(daysLogged.reduce((s, d) => s + d.carbsG, 0) / daysLogged.length);
+  const avgFat = Math.round(daysLogged.reduce((s, d) => s + d.fatG, 0) / daysLogged.length);
+  const calTarget = profile?.caloricTarget ?? 2000;
+  const protTarget = profile?.proteinTargetG ?? 150;
+  const calDiff = avgCal - calTarget;
+  const protDiff = avgProt - protTarget;
+  const daysOverCal = daysLogged.filter(d => d.calories > calTarget * 1.1).length;
+  const daysUnderProt = daysLogged.filter(d => d.proteinG < protTarget * 0.8).length;
+  const highestCal = daysLogged.reduce((a, b) => a.calories > b.calories ? a : b);
+  const lowestCal = daysLogged.reduce((a, b) => a.calories < b.calories ? a : b);
 
-  const user = `Goal: ${profile?.goal ?? 'not set'}
-Caloric target: ${profile?.caloricTarget ?? 'not set'} kcal/day
-Protein target: ${profile?.proteinTargetG ?? 'not set'}g/day
+  const system = `You are a blunt, data-driven nutrition coach writing a 7-day review.
+Rules:
+1. Open with the single most important pattern from this week — reference actual numbers
+2. Each bullet must include a specific number (calories, grams, days) — no vague statements
+3. If protein missed target more than 3 days, that is bullet 1
+4. If calories were consistently over/under, say by exactly how much on average
+5. Mention the highest-calorie day and lowest-calorie day if the swing is > 400 kcal
+6. Last bullet: one specific, actionable change for next week (not "eat more vegetables")
+7. Never use: "ensure", "optimize", "balanced", "overall", "prioritize", "crucial"
+8. 4-5 bullets max. Emoji + one sentence each. No headers, no bold.`;
 
-This week (${daysLogged.length}/7 days logged):
-- Avg calories: ${avgCal} kcal
-- Avg protein: ${avgProt}g
-- Avg fiber: ${avgFiber}g
-- Avg sodium: ${avgSodium}mg
-
-Daily breakdown:
-${days.map((d) => `${d.date}: ${d.calories > 0 ? `${Math.round(d.calories)} kcal, ${Math.round(d.proteinG)}g protein` : 'not logged'}`).join('\n')}
-
-Write a weekly nutrition summary with actionable insights.`;
+  const user = `Goal: ${profile?.goal ?? 'not set'} | Cal target: ${calTarget} | Protein target: ${protTarget}g
+Days logged: ${daysLogged.length}/7
+Avg: ${avgCal} kcal (${calDiff >= 0 ? '+' : ''}${calDiff} vs target), ${avgProt}g protein (${protDiff >= 0 ? '+' : ''}${protDiff}g vs target), ${avgCarb}g carbs, ${avgFat}g fat
+Days over cal target (>10%): ${daysOverCal}
+Days under protein (< 80% target): ${daysUnderProt}
+Highest day: ${highestCal.date} ${Math.round(highestCal.calories)} kcal
+Lowest day: ${lowestCal.date} ${Math.round(lowestCal.calories)} kcal
+Daily: ${days.map(d => d.calories > 0 ? `${d.date.slice(5)}: ${Math.round(d.calories)}kcal ${Math.round(d.proteinG)}gP` : `${d.date.slice(5)}: -`).join(' | ')}`;
 
   return callOpenAI(system, user);
 }
