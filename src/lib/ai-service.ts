@@ -101,17 +101,20 @@ export async function generateDailyNutritionOutlook(
     ? bloodwork.map((b) => `${b.markerName}: ${b.value} ${b.unit}`).join(', ')
     : null;
 
-  const system = `You are a personal nutrition coach reviewing someone's actual food log. 
-Write 3 short, direct observations about what they actually ate today — reference the real foods by name.
-Rules:
-- Reference specific foods they logged (e.g. "The bagels gave you..." not "Your carb intake...") 
-- Keep each point to one sentence, max 15 words
-- Do not start any point with "You" — vary the sentence openers
-- Do not use the word "ensuring", "optimize", "crucial", "prioritize", "intake", or "overall"
-- No generic nutrition advice that could apply to anyone
-- If nothing was logged, just note the day is still early
-- Format: exactly 3 bullet points, each starting with a single relevant emoji then a space
-- No headers, no bold, no numbered lists`;
+  const proteinGap = profile?.proteinTargetG ? profile.proteinTargetG - dailyLog.proteinG : null;
+  const calGap = profile?.caloricTarget ? profile.caloricTarget - dailyLog.calories : null;
+  const timeOfDay = new Date().getHours() < 14 ? 'morning/midday' : 'evening';
+
+  const system = `You are a blunt, sharp nutrition coach. Write 3 observations grounded in the exact numbers and foods listed below.
+Rules (read carefully):
+1. Every bullet must cite a specific food name OR a specific number — never both generic
+2. If protein is more than 30g below target, that is the MOST important thing to call out
+3. If calories are more than 400 below target by ${timeOfDay}, note what's missing
+4. Mention the macro split only if it's notably imbalanced (e.g. carbs >60% of calories)
+5. Never use: "ensure", "optimize", "prioritize", "crucial", "intake", "overall", "balanced diet", "healthy choices"
+6. Never start a sentence with "You" — use the food name, a number, or a fragment instead
+7. Sentences must be under 18 words each
+8. Format: exactly 3 bullet points. Each starts with one emoji then a space. Nothing else.`;
 
   const calPctStr = calPct !== null ? ` (${calPct}%)` : '';
   const protPctStr = protPct !== null ? ` (${protPct}%)` : '';
@@ -286,7 +289,16 @@ export async function analyzeMealPhoto(
     messages: [
       {
         role: 'system',
-        content: `You are a nutrition analysis assistant. When given a meal photo, identify each DISTINCT food item, estimate portion sizes, and return a JSON object with the following structure:
+        content: `You are a precise nutrition analyst. Given a meal photo, estimate calories and macros with the accuracy of a registered dietitian.
+
+PORTION ESTIMATION PROCESS (follow in order):
+1. Identify the container/plate — standard dinner plate (26cm), side plate (20cm), bowl (400ml/700ml/1L), takeaway box, etc. Use this as your size anchor.
+2. Look for reference objects: a fork (~19cm), a hand, a can (355ml), a phone. Use these to calibrate.
+3. Estimate the volume or weight of each food item relative to the container.
+4. Apply realistic USDA/nutrition database values for that exact weight/volume.
+5. Do NOT default to "1 cup" or "1 serving" — derive the quantity from what you can actually see.
+
+Return this exact JSON structure:
 {
   "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
   "totalCalories": 0,
@@ -296,20 +308,27 @@ export async function analyzeMealPhoto(
   "confidenceScore": 0.0,
   "notes": ""
 }
-IMPORTANT: Group identical items — for example, 4 slices of pizza should be ONE item with quantity=4, NOT four separate items. The calories/protein/carbs/fat/fiber/sugar/sodium/cholesterol/saturatedFat/potassium/vitaminD/calcium/iron fields represent the values for ONE unit of the estimatedServingSize. Estimate ALL nutrient fields as best you can — use typical nutritional database values for the identified food and portion size. Be conservative with estimates. Use any description provided by the user to improve accuracy. Confidence score should reflect image clarity and identifiability.`,
+
+IMPORTANT RULES:
+- estimatedServingSize must be a weight (e.g. "180g") or volume (e.g. "350ml") — NOT "1 serving"
+- Group identical items: 3 chicken strips = one item with quantity=3, calories/macros for ONE strip
+- All macro fields = values for ONE unit of estimatedServingSize
+- notes field: describe your container/reference object reasoning (e.g. "Standard 26cm plate, chicken occupies ~1/3, estimated 180g")
+- confidenceScore: 0.9 if container clearly visible, 0.7 if partially visible, 0.5 if no reference objects
+- If image is too dark/blurry, return confidenceScore < 0.4 and note it`,
       },
       {
         role: 'user',
         content: [
           {
             type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: 'low' },
+            image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: 'high' },
           },
           { type: 'text', text: userText },
         ],
       },
     ],
-    max_tokens: 800,
+    max_tokens: 1200,
     response_format: { type: 'json_object' },
   });
 
