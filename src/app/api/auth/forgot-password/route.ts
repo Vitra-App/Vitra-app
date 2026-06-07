@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   });
 
   const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3001';
-  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+  const resetUrl = `vitra://reset-password?token=${token}`;
 
   try {
     await sendPasswordResetEmail(user.email!, resetUrl);
