@@ -77,14 +77,37 @@ export async function fetchOpenFoodFactsByBarcode(
 function mapOFFProduct(p: OFFProduct, barcode: string): MappedFood {
   const n = p.nutriments ?? {};
 
-  // Per-100g values; use 100g as the canonical serving for OFF imports.
-  const servingWeightG = 100;
-  const servingSize =
-    p.serving_size && String(p.serving_size).trim().length > 0
-      ? String(p.serving_size)
-      : '100 g';
+  // ── Serving size ──────────────────────────────────────────────────────────
+  // Open Food Facts provides:
+  //   serving_size:     human label e.g. "28 g", "1 cup (240 ml)", "3 biscuits (45g)"
+  //   serving_quantity: numeric grams of one serving (most reliable)
+  //
+  // All nutriment values in the OFF API are per 100g.
+  // We scale them to the actual serving weight so the app shows correct numbers.
 
-  const gToMg = (g?: number) => (typeof g === 'number' ? g * 1000 : null);
+  // Parse serving_quantity — can be a number or a numeric string
+  let servingWeightG = 100; // fallback
+  const sq = p.serving_quantity;
+  if (sq !== undefined && sq !== null) {
+    const parsed = typeof sq === 'number' ? sq : parseFloat(String(sq));
+    if (!isNaN(parsed) && parsed > 0) servingWeightG = parsed;
+  }
+
+  // Build a clean human-readable serving size label
+  const servingSizeLabel =
+    p.serving_size && String(p.serving_size).trim().length > 0
+      ? String(p.serving_size).trim()
+      : `${servingWeightG} g`;
+
+  // Scale factor: from per-100g to per-actual-serving
+  const scale = servingWeightG / 100;
+
+  const scalePer100 = (v?: number) =>
+    typeof v === 'number' ? Math.round(v * scale * 10) / 10 : null;
+
+  // Sodium/cholesterol/potassium in OFF are in grams per 100g → scale then convert to mg
+  const gToMgScaled = (g?: number) =>
+    typeof g === 'number' ? Math.round(g * scale * 1000) : null;
 
   return {
     name: p.product_name?.trim() || `Unknown product (${barcode})`,
@@ -92,24 +115,24 @@ function mapOFFProduct(p: OFFProduct, barcode: string): MappedFood {
     barcode,
     source: 'openfoodfacts',
     externalId: barcode,
-    servingSize,
+    servingSize: servingSizeLabel,
     servingWeightG,
     densityGPerMl: null,
-    calories: n['energy-kcal_100g'] ?? 0,
-    proteinG: n.proteins_100g ?? 0,
-    carbsG: n.carbohydrates_100g ?? 0,
-    fatG: n.fat_100g ?? 0,
-    fiberG: n.fiber_100g ?? null,
-    sugarG: n.sugars_100g ?? null,
-    sodiumMg: gToMg(n.sodium_100g),
-    cholesterolMg: gToMg(n.cholesterol_100g),
-    saturatedFatG: n['saturated-fat_100g'] ?? null,
-    potassiumMg: gToMg(n.potassium_100g),
+    calories: Math.round((n['energy-kcal_100g'] ?? 0) * scale),
+    proteinG: Math.round((n.proteins_100g ?? 0) * scale * 10) / 10,
+    carbsG: Math.round((n.carbohydrates_100g ?? 0) * scale * 10) / 10,
+    fatG: Math.round((n.fat_100g ?? 0) * scale * 10) / 10,
+    fiberG: scalePer100(n.fiber_100g),
+    sugarG: scalePer100(n.sugars_100g),
+    sodiumMg: gToMgScaled(n.sodium_100g),
+    cholesterolMg: gToMgScaled(n.cholesterol_100g),
+    saturatedFatG: scalePer100(n['saturated-fat_100g']),
+    potassiumMg: gToMgScaled(n.potassium_100g),
     vitaminDMcg:
       typeof n['vitamin-d_100g'] === 'number'
-        ? n['vitamin-d_100g']! * 1_000_000 // grams -> mcg
+        ? Math.round(n['vitamin-d_100g']! * scale * 1_000_000) // grams -> mcg, scaled
         : null,
-    calciumMg: gToMg(n.calcium_100g),
-    ironMg: gToMg(n.iron_100g),
+    calciumMg: gToMgScaled(n.calcium_100g),
+    ironMg: gToMgScaled(n.iron_100g),
   };
 }
