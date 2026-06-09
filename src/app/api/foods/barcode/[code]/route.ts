@@ -22,16 +22,42 @@ export async function GET(
   }
 
   const existing = await prisma.food.findUnique({ where: { barcode } });
-  if (existing) return NextResponse.json(existing);
+
+  // If we have a cached record with the correct serving weight, return it.
+  // servingWeightG === 100 AND source === 'openfoodfacts' means it was cached
+  // with the old buggy code that always used 100g — re-fetch to get the real serving.
+  if (existing && !(existing.source === 'openfoodfacts' && existing.servingWeightG === 100)) {
+    return NextResponse.json(existing);
+  }
 
   const off = await fetchOpenFoodFactsByBarcode(barcode);
   if (!off) {
+    // If we have a stale cached record, return it rather than a 404
+    if (existing) return NextResponse.json(existing);
     return NextResponse.json(
       { error: 'Product not found', barcode },
       { status: 404 },
     );
   }
 
-  const created = await prisma.food.create({ data: off });
-  return NextResponse.json(created);
+  // Upsert so stale 100g records get corrected
+  const upserted = await prisma.food.upsert({
+    where: { barcode },
+    create: off,
+    update: {
+      servingSize: off.servingSize,
+      servingWeightG: off.servingWeightG,
+      calories: off.calories,
+      proteinG: off.proteinG,
+      carbsG: off.carbsG,
+      fatG: off.fatG,
+      fiberG: off.fiberG,
+      sugarG: off.sugarG,
+      sodiumMg: off.sodiumMg,
+      cholesterolMg: off.cholesterolMg,
+      saturatedFatG: off.saturatedFatG,
+      potassiumMg: off.potassiumMg,
+    },
+  });
+  return NextResponse.json(upserted);
 }

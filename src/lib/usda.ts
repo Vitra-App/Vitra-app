@@ -74,14 +74,15 @@ export function hasUsdaKey(): boolean {
   return Boolean(process.env.USDA_API_KEY?.trim());
 }
 
-export async function searchUsdaFoods(query: string, pageSize = 15): Promise<USDASearchResult[]> {
+export async function searchUsdaFoods(query: string, pageSize = 15, offset = 0): Promise<USDASearchResult[]> {
   const key = process.env.USDA_API_KEY?.trim();
   if (!key) return [];
   if (!query.trim()) return [];
 
+  const pageNumber = Math.floor(offset / pageSize) + 1;
   const url = `${USDA_BASE}/foods/search?query=${encodeURIComponent(
     query,
-  )}&pageSize=${pageSize}&dataType=Foundation,SR%20Legacy,Branded&api_key=${encodeURIComponent(
+  )}&pageSize=${pageSize}&pageNumber=${pageNumber}&dataType=Foundation,SR%20Legacy,Branded&api_key=${encodeURIComponent(
     key,
   )}`;
 

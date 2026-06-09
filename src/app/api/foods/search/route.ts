@@ -76,5 +76,5 @@ export async function GET(req: NextRequest) {
     return a.name.length - b.name.length;
   });
 
-  return NextResponse.json(merged.slice(0, 25));
+  return NextResponse.json(merged.slice(offset, offset + PAGE_SIZE));
 }
