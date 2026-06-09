@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 const COMMON_FOODS = [
   { name: 'Ribeye Steak', servingSize: '225g (8oz)', servingWeightG: 225, calories: 540, proteinG: 48, carbsG: 0, fatG: 38, sodiumMg: 110 },
@@ -52,15 +53,9 @@ const COMMON_FOODS = [
   { name: 'Fried Rice', servingSize: '195g (1 cup)', servingWeightG: 195, calories: 238, proteinG: 5, carbsG: 41, fatG: 7, sodiumMg: 576 },
 ];
 
-export async function POST(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== 'vitra-seed-2026') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const deleted = await prisma.food.deleteMany({
-    where: { calories: 0, source: { not: 'custom' } },
-  });
+async function main() {
+  const deleted = await prisma.food.deleteMany({ where: { calories: 0 } });
+  console.log('Deleted 0-cal entries:', deleted.count);
 
   let created = 0, updated = 0;
   for (const food of COMMON_FOODS) {
@@ -68,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       await prisma.food.update({
         where: { id: existing.id },
-        data: { calories: food.calories, proteinG: food.proteinG, carbsG: food.carbsG, fatG: food.fatG, servingSize: food.servingSize, servingWeightG: food.servingWeightG, sodiumMg: food.sodiumMg },
+        data: { calories: food.calories, proteinG: food.proteinG, carbsG: food.carbsG, fatG: food.fatG, servingSize: food.servingSize, servingWeightG: food.servingWeightG },
       });
       updated++;
     } else {
@@ -78,7 +73,8 @@ export async function POST(req: NextRequest) {
       created++;
     }
   }
-
-  return NextResponse.json({ ok: true, deletedZeroCalFoods: deleted.count, created, updated });
+  console.log(`Created: ${created}, Updated: ${updated}`);
+  await prisma.$disconnect();
 }
-// force redeploy Mon Jun  8 22:17:32 EDT 2026
+
+main().catch(e => { console.error(e); process.exit(1); });
