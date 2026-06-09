@@ -12,7 +12,10 @@ export const authConfig = {
     newUser: '/onboarding',
   },
   callbacks: {
-    authorized({ auth }) {
+    authorized({ auth, request }) {
+      // Allow admin/public API routes without auth
+      const pathname = request.nextUrl.pathname;
+      if (pathname.startsWith('/api/admin')) return true;
       return !!auth?.user;
     },
   },
