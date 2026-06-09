@@ -5,8 +5,6 @@ export const { auth: middleware } = NextAuth(authConfig);
 
 export const config = {
   matcher: [
-    // Protect all app routes; allow public routes through
-    '/((?!login|onboarding|forgot-password|reset-password|verify-email|api/auth|_next/static|_next/image|favicon.ico).*)',
-    // Note: api/auth/* is excluded above, which covers api/auth/mobile-signin
+    '/((?!login|onboarding|forgot-password|reset-password|verify-email|api/auth|api/admin|_next/static|_next/image|favicon.ico).*)',
   ],
 };
