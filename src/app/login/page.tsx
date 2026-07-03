@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { VitraLogo } from '@/components/VitraLogo';
 
-const WEBSITE_URL = 'https://vitrawebsite-production.up.railway.app';
+const WEBSITE_URL = 'https://myvitra.org';
 
 function LoginPageInner() {
   const router = useRouter();
