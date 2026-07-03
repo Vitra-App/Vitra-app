@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sendVerificationEmail } from '@/lib/email';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -16,7 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input.' }, { status: 400 });
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, password } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -30,10 +33,27 @@ export async function POST(req: NextRequest) {
       name,
       email,
       passwordHash,
-      emailVerified: new Date(),
+      // emailVerified stays null until the user clicks the verification link
       subscriptionStatus: { create: { tier: 'free' } },
     },
   });
+
+  // Create a verification token and email a verification link
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 hours
+
+  await prisma.verificationToken.create({
+    data: { identifier: email, token, expires },
+  });
+
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3001';
+  const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
+
+  try {
+    await sendVerificationEmail(email, verifyUrl);
+  } catch {
+    console.error('[register] Failed to send verification email');
+  }
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }
