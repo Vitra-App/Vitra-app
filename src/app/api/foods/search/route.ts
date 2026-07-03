@@ -1,4 +1,4 @@
-import { auth } from '@/auth';
+ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { searchUsdaFoods } from '@/lib/usda';
 import { NextRequest, NextResponse } from 'next/server';
@@ -77,7 +77,11 @@ export async function GET(req: NextRequest) {
 
   // ── 1. Local DB ──────────────────────────────────────────────────────────
   const localFoods = await prisma.food.findMany({
-    where: { name: { contains: q, mode: 'insensitive' } },
+    where: {
+      name: { contains: q, mode: 'insensitive' },
+      // Never surface AI-generated per-meal foods in search
+      NOT: { source: 'ai' },
+    },
     select: {
       id: true, name: true, brand: true, servingSize: true, servingWeightG: true,
       densityGPerMl: true, calories: true, proteinG: true, carbsG: true, fatG: true,

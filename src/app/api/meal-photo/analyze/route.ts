@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { analyzeMealPhoto } from '@/lib/ai-service';
+import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
@@ -9,6 +10,49 @@ const schema = z.object({
   mimeType: z.string().optional(),
   description: z.string().optional(),
 });
+
+// Words we ignore when hunting for a brand/product in the description.
+const STOPWORDS = new Set([
+  'the','a','an','and','or','with','of','my','some','this','that','i','ate','had',
+  'for','from','on','in','to','plus','grilled','baked','fried','roasted','raw',
+  'cooked','fresh','breakfast','lunch','dinner','snack','meal','plate','bowl',
+]);
+
+/**
+ * Look up branded products the user named in their description so the AI can
+ * use real database nutrition values (e.g. "Bell & Evans chicken").
+ */
+async function findReferenceFoods(description?: string) {
+  if (!description) return [];
+  const cleaned = description.replace(/[^\p{L}\p{N}&'\s-]/gu, ' ').trim();
+  if (cleaned.length < 3) return [];
+
+  const tokens = cleaned
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !STOPWORDS.has(w.toLowerCase()));
+  if (tokens.length === 0) return [];
+
+  // Build candidate phrases: the full description + individual significant words
+  const phrases = Array.from(new Set([cleaned, ...tokens]));
+
+  const results = await prisma.food.findMany({
+    where: {
+      NOT: { source: 'ai' },
+      OR: phrases.flatMap((p) => [
+        { brand: { contains: p, mode: 'insensitive' as const } },
+        { name: { contains: p, mode: 'insensitive' as const } },
+      ]),
+    },
+    select: {
+      name: true, brand: true, servingSize: true, calories: true,
+      proteinG: true, carbsG: true, fatG: true, fiberG: true, sugarG: true, sodiumMg: true,
+    },
+    take: 8,
+  });
+
+  // Prefer branded matches first
+  return results.sort((a, b) => (b.brand ? 1 : 0) - (a.brand ? 1 : 0));
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -28,6 +72,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
 
   const { base64, mimeType, description } = parsed.data;
-  const result = await analyzeMealPhoto(base64, mimeType, description);
+  const referenceFoods = await findReferenceFoods(description);
+  const result = await analyzeMealPhoto(base64, mimeType, description, referenceFoods);
   return NextResponse.json(result);
 }

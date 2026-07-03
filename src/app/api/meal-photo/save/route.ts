@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
           vitaminDMcg: item.vitaminDMcg,
           calciumMg: item.calciumMg,
           ironMg: item.ironMg,
-          isCustom: true,
+          // AI-detected foods are NOT user custom foods: they must not appear in
+          // "My Foods" or global search. isCustom stays false and source = 'ai'.
+          isCustom: false,
+          source: 'ai',
           createdBy: userId,
         },
       });
