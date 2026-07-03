@@ -23,6 +23,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
+    // Require a verified email before allowing sign-in
+    if (!user.emailVerified) {
+      return NextResponse.json(
+        { error: 'Please verify your email before signing in. Check your inbox for the verification link.', code: 'email_not_verified' },
+        { status: 403 }
+      );
+    }
+
     // In production (HTTPS), NextAuth v5 uses __Secure- prefix on cookie name and salt
     const isSecure = process.env.NODE_ENV === 'production';
     const cookieName = isSecure ? '__Secure-authjs.session-token' : 'authjs.session-token';
