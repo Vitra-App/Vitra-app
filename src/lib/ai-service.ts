@@ -361,6 +361,90 @@ IMPORTANT RULES:
  return JSON.parse(raw) as MealPhotoAnalysis;
 }
 
+// -- analyzeMealText (no image -- pure text description) ----------------------
+
+export async function analyzeMealText(
+  description: string,
+  referenceFoods?: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }>,
+): Promise<MealPhotoAnalysis> {
+  if (!hasOpenAIKey()) {
+    return getMockMealTextAnalysis(description);
+  }
+
+  const { default: OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  let referenceBlock = '';
+  if (referenceFoods && referenceFoods.length > 0) {
+    const lines = referenceFoods.slice(0, 8).map((f) => {
+      const label = f.brand ? `${f.brand} ${f.name}` : f.name;
+      return `- ${label} (per ${f.servingSize}): ${Math.round(f.calories)} kcal, ${f.proteinG}g protein, ${f.carbsG}g carbs, ${f.fatG}g fat` +
+        (f.fiberG != null ? `, ${f.fiberG}g fiber` : '') +
+        (f.sugarG != null ? `, ${f.sugarG}g sugar` : '') +
+        (f.sodiumMg != null ? `, ${Math.round(f.sodiumMg)}mg sodium` : '');
+    });
+    referenceBlock = `\n\nMATCHED DATABASE PRODUCTS (the user named a brand/product -- use THESE exact nutrition values, scaled to the described portion, instead of generic estimates):\n${lines.join('\n')}`;
+  }
+
+  const userText = `The user describes what they ate: "${description}". Estimate calories and macros for each food item and return the JSON.${referenceBlock}`;
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `You are a precise nutrition analyst. Given a plain-text description of a meal (no photo), estimate calories and macros with the accuracy of a registered dietitian, using standard USDA-style portion sizes for common foods when the user doesn't specify exact quantities.
+
+PORTION ESTIMATION RULES:
+1. If the user gives a quantity (e.g. "4 scrambled eggs", "2 slices of bacon"), use that exact count.
+2. If no quantity is given for an item, assume ONE standard/typical serving (e.g. "a bagel" = 1 medium bagel ~90g, "rice" = 1 cup cooked).
+3. Use realistic USDA nutrition database values for each food at that quantity/serving size.
+4. Do NOT ask clarifying questions -- always produce your best estimate.
+
+Return this exact JSON structure:
+{
+  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
+  "totalCalories": 0,
+  "totalProteinG": 0,
+  "totalCarbsG": 0,
+  "totalFatG": 0,
+  "confidenceScore": 0.0,
+  "notes": ""
+}
+
+IMPORTANT RULES:
+- estimatedServingSize must be a weight (e.g. "50g") or volume (e.g. "240ml"), or a clear unit count (e.g. "1 medium bagel") -- NOT "1 serving"
+- Group identical items: "4 scrambled eggs" = one item with quantity=4, calories/macros for ONE egg
+- All macro fields = values for ONE unit of estimatedServingSize
+- notes field: briefly state any assumptions made about unspecified quantities (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large eggs")
+- confidenceScore: 0.75 if quantities were explicit, 0.55 if serving sizes were assumed, 0.35 if the description was vague
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
+      },
+      { role: 'user', content: userText },
+    ],
+    max_tokens: 1000,
+    response_format: { type: 'json_object' },
+  });
+
+  const raw = response.choices[0]?.message?.content ?? '{}';
+  return JSON.parse(raw) as MealPhotoAnalysis;
+}
+
+function getMockMealTextAnalysis(description: string): MealPhotoAnalysis {
+  return {
+    items: [
+      { name: 'Scrambled Eggs', estimatedServingSize: '1 large egg', quantity: 4, calories: 90, proteinG: 6.3, carbsG: 0.6, fatG: 6.5, fiberG: 0, sugarG: 0.4, sodiumMg: 88, cholesterolMg: 164, saturatedFatG: 1.6, potassiumMg: 67, vitaminDMcg: 1.0, calciumMg: 25, ironMg: 0.8 },
+      { name: 'Plain Bagel', estimatedServingSize: '1 medium bagel (90g)', quantity: 1, calories: 245, proteinG: 9.4, carbsG: 48, fatG: 1.4, fiberG: 2, sugarG: 5, sodiumMg: 430, cholesterolMg: 0, saturatedFatG: 0.2, potassiumMg: 100, vitaminDMcg: 0, calciumMg: 20, ironMg: 3 },
+    ],
+    totalCalories: 605,
+    totalProteinG: 34.6,
+    totalCarbsG: 50.4,
+    totalFatG: 27.4,
+    confidenceScore: 0.55,
+    notes: `Mock analysis for: "${description}" -- add an OpenAI API key for real text-based estimation.`,
+  };
+}
+
 function getMockMealPhotoAnalysis(): MealPhotoAnalysis {
  return {
    items: [
