@@ -69,6 +69,14 @@ export async function POST(req: NextRequest) {
 
   const { description } = parsed.data;
   const referenceFoods = await findReferenceFoods(description);
-  const result = await analyzeMealText(description, referenceFoods);
-  return NextResponse.json(result);
+  try {
+    const result = await analyzeMealText(description, referenceFoods);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error('[meal-photo/analyze-text] AI analysis failed:', err);
+    return NextResponse.json(
+      { error: 'The AI service is temporarily unavailable. Please try again in a moment.' },
+      { status: 502 },
+    );
+  }
 }

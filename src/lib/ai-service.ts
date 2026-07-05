@@ -62,7 +62,7 @@ function hasOpenAIKey(): boolean {
 
 async function callOpenAI(systemPrompt: string, userPrompt: string): Promise<string> {
  const { default: OpenAI } = await import('openai');
- const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3 });
+ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
 
  const response = await client.chat.completions.create({
    model: 'gpt-4o-mini',
@@ -288,7 +288,7 @@ export async function analyzeMealPhoto(
   }
 
   const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
 
   // Build a reference-products block so the AI uses REAL database values for
   // any brand/product the user named (e.g. "Bell & Evans chicken").
@@ -372,7 +372,7 @@ export async function analyzeMealText(
   }
 
   const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3 });
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
 
   let referenceBlock = '';
   if (referenceFoods && referenceFoods.length > 0) {
