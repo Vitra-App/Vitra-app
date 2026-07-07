@@ -65,8 +65,11 @@ export async function POST(req: NextRequest) {
     include: { mealItems: true },
   });
 
-  // Update daily summary
-  const dayStart = new Date();
+  // Update daily summary — bucket must match the day the meal is actually logged to
+  // (`loggedAt`), not the server's literal "now". Using raw `new Date()` here previously meant
+  // logging a meal for a different day (e.g. near a timezone day-boundary) would silently
+  // increment the WRONG day's running totals.
+  const dayStart = meal.loggedAt ? new Date(meal.loggedAt) : new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
 
   const totals = mealItemData.reduce(

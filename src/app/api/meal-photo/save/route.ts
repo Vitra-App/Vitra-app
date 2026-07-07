@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { dailyTag } from '@/lib/data-cache';
 
 const itemSchema = z.object({
   name: z.string().min(1),
@@ -24,6 +26,14 @@ const itemSchema = z.object({
 const schema = z.object({
   mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
   items: z.array(itemSchema).min(1),
+  // Local calendar day (YYYY-MM-DD) the user intends this meal to be logged on.
+  // Without this, we previously defaulted to the server's raw UTC "now", which for any
+  // timezone behind UTC (all of the Americas) rolls over to the next UTC calendar day in the
+  // evening — exactly when dinner is logged. That silently filed dinner meals under tomorrow's
+  // UTC bucket, making them vanish from "today"'s log/dashboard. Anchoring to noon UTC of the
+  // client-supplied local date (same pattern already used by the manual food-log endpoint)
+  // fixes this for any timezone from UTC-12 to UTC+14.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -34,8 +44,14 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
 
-  const { mealType, items } = parsed.data;
+  const { mealType, items, date } = parsed.data;
   const userId = session.user.id;
+
+  // Noon-UTC anchor of the intended local day — safe from day-boundary rollover in either
+  // direction for any real-world timezone offset (±14h max).
+  const dateStr = date ?? new Date().toISOString().slice(0, 10);
+  const loggedAt = new Date(`${dateStr}T12:00:00.000Z`);
+  const dayBucket = new Date(`${dateStr}T00:00:00.000Z`);
 
   // Create a custom food record for each photo-detected item
   const mealItemData = await Promise.all(
@@ -89,6 +105,7 @@ export async function POST(req: NextRequest) {
     data: {
       userId,
       mealType,
+      loggedAt,
       aiAnalyzed: true,
       mealItems: { createMany: { data: mealItemData } },
     },
@@ -118,8 +135,10 @@ export async function POST(req: NextRequest) {
       carbsG: { increment: totals.carbsG },
       fatG: { increment: totals.fatG },
     },
-    create: { userId, date: dayStart, ...totals },
+    create: { userId, date: dayBucket, ...totals },
   });
+
+  revalidateTag(dailyTag(userId, dateStr));
 
   return NextResponse.json(meal, { status: 201 });
 }
