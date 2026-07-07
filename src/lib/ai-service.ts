@@ -28,6 +28,7 @@ export interface WeeklyTrends {
 }
 
 export interface MealPhotoAnalysis {
+ mealName?: string;
  items: Array<{
    name: string;
    estimatedServingSize: string;
@@ -46,6 +47,13 @@ export interface MealPhotoAnalysis {
    calciumMg: number;
    ironMg: number;
  }>;
+ plateEstimate?: {
+   type: string;
+   diameterInches?: number;
+   fillPercent?: number;
+   estimatedVolumeMl?: number;
+ };
+ hiddenCalories?: string[];
  totalCalories: number;
  totalProteinG: number;
  totalCarbsG: number;
@@ -400,17 +408,23 @@ export async function analyzeMealText(
     messages: [
       {
         role: 'system',
-        content: `You are a precise nutrition analyst. Given a plain-text description of a meal (no photo), estimate calories and macros with the accuracy of a registered dietitian, using standard USDA-style portion sizes for common foods when the user doesn't specify exact quantities.
+        content: `Your primary objective is ACCURACY, not optimism. You are a precise nutrition analyst. Given a plain-text description of a meal (no photo), estimate calories and macros with the rigor of a registered dietitian, using realistic USDA-style portion sizes.
 
 PORTION ESTIMATION RULES:
 1. If the user gives a quantity (e.g. "4 scrambled eggs", "2 slices of bacon"), use that exact count.
-2. If no quantity is given for an item, assume ONE standard/typical serving (e.g. "a bagel" = 1 medium bagel ~90g, "rice" = 1 cup cooked).
+2. If no quantity is given for an item, assume ONE standard/typical serving (e.g. "a bagel" = 1 medium bagel ~90g, "rice" = 1 cup cooked) — but lean toward the larger end of "typical" (e.g. a restaurant/takeout item mentioned by name is usually bigger than a home-cooked default).
 3. Use realistic USDA nutrition database values for each food at that quantity/serving size.
-4. Do NOT ask clarifying questions -- always produce your best estimate.
+4. Do NOT ask clarifying questions — always produce your best estimate.
+
+HIDDEN CALORIES: Explicitly consider preparation words. "Fried" implies ~1-2 tbsp absorbed oil (100-250 kcal). "Buttered"/"sautéed" implies added fat. "Creamy"/"cheesy" implies more fat/calories than a plain version. Restaurant/takeout dishes and sauces/dressings/gravies typically contain more fat, sugar, and salt than a minimal home-cooked estimate. List anything probable but not explicitly stated in "hiddenCalories".
+
+SANITY CHECK before finalizing: Would this realistically satisfy an average adult for this meal? Is the total suspiciously low for what was described? Dense foods (pasta, rice, granola, nuts, cheese, fries, desserts, peanut butter) should never be underestimated. When uncertain between two plausible estimates, choose the larger one — underestimating is the more common and more harmful error.
 
 Return this exact JSON structure:
 {
+  "mealName": "",
   "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
+  "hiddenCalories": [""],
   "totalCalories": 0,
   "totalProteinG": 0,
   "totalCarbsG": 0,
@@ -423,10 +437,10 @@ IMPORTANT RULES:
 - estimatedServingSize must be a weight (e.g. "50g") or volume (e.g. "240ml"), or a clear unit count (e.g. "1 medium bagel") -- NOT "1 serving"
 - Group identical items: "4 scrambled eggs" = one item with quantity=4, calories/macros for ONE egg
 - All macro fields = values for ONE unit of estimatedServingSize
-- notes field: briefly state any assumptions made about unspecified quantities (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large eggs")
-- confidenceScore: 0.75 if quantities were explicit, 0.55 if serving sizes were assumed, 0.35 if the description was vague
-- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.
-- Account for hidden calories implied by preparation words: "fried" adds ~1-2 tbsp oil (100-250 kcal), "buttered"/"sauteed" adds butter/oil, restaurant/takeout dishes and sauces/dressings/gravies typically contain more fat, sugar, and salt than a minimal home-cooked estimate. When uncertain, lean toward the higher realistic estimate rather than the lower one — underestimating is the more common and more harmful error.`,
+- notes field: briefly state any assumptions made about unspecified quantities and hidden-calorie reasoning (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large fried eggs; added ~1 tbsp oil for frying")
+- confidenceScore: 0.80-0.95 if quantities were explicit, 0.55-0.79 if serving sizes were assumed, below 0.55 if the description was vague
+- hiddenCalories: empty array if genuinely none likely
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
       },
       { role: 'user', content: userText },
     ],
