@@ -340,7 +340,14 @@ IMPORTANT RULES:
 - notes field: describe your container/reference object reasoning (e.g. "Standard 26cm plate, chicken occupies ~1/3, estimated 180g")
 - confidenceScore: 0.9 if container clearly visible, 0.7 if partially visible, 0.5 if no reference objects
 - If image is too dark/blurry, return confidenceScore < 0.4 and note it
-- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the visible portion) rather than generic estimates, and put the brand in the item name (e.g. "Bell & Evans Chicken Breast"). Raise confidenceScore to 0.9 for those items.`,
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the visible portion) rather than generic estimates, and put the brand in the item name (e.g. "Bell & Evans Chicken Breast"). Raise confidenceScore to 0.9 for those items.
+
+CRITICAL — AVOID SYSTEMATIC UNDERCOUNTING (vision models consistently underestimate calories, correct for this):
+- ACCOUNT FOR HIDDEN CALORIES you cannot directly see: cooking oil/butter used in preparation (typically adds 100-200 kcal per dish), salad dressings, sauces, gravies, and glazes. A glossy/shiny surface on food = oil or butter was used — add it even though it has no visible volume.
+- Restaurant, takeout, and visibly fried/glossy/creamy food is prepared with MORE fat, oil, butter, sugar and salt than a home-cooked estimate would suggest — bias your estimate toward the HIGHER end of the plausible range for these foods, not the lower end.
+- Do not round estimates down "to be safe" — dietitians calibrate to realistic USDA-style values, which are usually higher than a first visual instinct suggests, especially for meats (cooked shrinkage means visible portions are denser than they look), cheese, nuts, and dressed salads.
+- Combination dishes (stir-fries, casseroles, pasta bakes, burritos) almost always contain more oil/fat/cheese mixed throughout than what's visible on the surface — estimate the full dish weight generously, not just the visible top layer.
+- When genuinely uncertain between two portion-size estimates, choose the larger one.`,
       },
       {
         role: 'user',
@@ -418,7 +425,8 @@ IMPORTANT RULES:
 - All macro fields = values for ONE unit of estimatedServingSize
 - notes field: briefly state any assumptions made about unspecified quantities (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large eggs")
 - confidenceScore: 0.75 if quantities were explicit, 0.55 if serving sizes were assumed, 0.35 if the description was vague
-- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.
+- Account for hidden calories implied by preparation words: "fried" adds ~1-2 tbsp oil (100-250 kcal), "buttered"/"sauteed" adds butter/oil, restaurant/takeout dishes and sauces/dressings/gravies typically contain more fat, sugar, and salt than a minimal home-cooked estimate. When uncertain, lean toward the higher realistic estimate rather than the lower one — underestimating is the more common and more harmful error.`,
       },
       { role: 'user', content: userText },
     ],

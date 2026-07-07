@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { analyzeMealText } from '@/lib/ai-service';
+import { groundAnalysisInDatabase } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -70,7 +71,8 @@ export async function POST(req: NextRequest) {
   const { description } = parsed.data;
   const referenceFoods = await findReferenceFoods(description);
   try {
-    const result = await analyzeMealText(description, referenceFoods);
+    const raw = await analyzeMealText(description, referenceFoods);
+    const result = await groundAnalysisInDatabase(raw);
     return NextResponse.json(result);
   } catch (err) {
     console.error('[meal-photo/analyze-text] AI analysis failed:', err);

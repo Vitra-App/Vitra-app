@@ -5,6 +5,10 @@
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    height: 100%;
+  }
+
   html {
     @apply scroll-smooth;
     overflow-x: hidden;
