@@ -227,7 +227,7 @@ export async function groundAnalysisInDatabase(analysis: MealPhotoAnalysis): Pro
         vitaminDMcg: match.vitaminDMcg != null ? Math.round(match.vitaminDMcg * scale * 10) / 10 : item.vitaminDMcg,
         calciumMg: match.calciumMg != null ? Math.round(match.calciumMg * scale) : item.calciumMg,
         ironMg: match.ironMg != null ? Math.round(match.ironMg * scale * 10) / 10 : item.ironMg,
-        name: match.brand ? `${match.brand} ${match.name}`.trim() : item.name,
+        name: groundedDisplayName(match),
       };
     }),
   );
