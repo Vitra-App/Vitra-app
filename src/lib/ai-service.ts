@@ -466,6 +466,7 @@ IMPORTANT RULES:
 - notes field: briefly state any assumptions made about unspecified quantities and hidden-calorie reasoning (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large fried eggs; added ~1 tbsp oil for frying")
 - confidenceScore: 0.80-0.95 if quantities were explicit, 0.55-0.79 if serving sizes were assumed, below 0.55 if the description was vague
 - hiddenCalories: empty array if genuinely none likely
+- NEVER invent a specific brand, restaurant, or product name that the user did not mention. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") unless a brand/restaurant is explicitly named in the description or provided in "MATCHED DATABASE PRODUCTS" below. Do not name a specific commercial product (e.g. a canned pasta brand) for a home-style dish just because it is a well-known association -- a plain "bowl of spaghetti" is fresh-cooked pasta, not a specific canned product.
 - BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
       },
       { role: 'user', content: userText },
