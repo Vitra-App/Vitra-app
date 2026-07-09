@@ -375,6 +375,7 @@ IMPORTANT RULES:
 - All macro fields = values for ONE unit of estimatedServingSize
 - notes field: summarize your container/portion/hidden-calorie reasoning and state confidence explicitly (e.g. "Standard 10in plate, ~70% full. Chicken ~190g (visible density + shrinkage), rice ~2.2 cups compressed, added ~1.5 tbsp oil for sauté. Confidence: good estimate.")
 - hiddenCalories: list plain-language items like "Possible hidden calories: cooking oil in stir-fry", "Possible butter on toast" — empty array if genuinely none likely
+- NEVER invent a specific brand, restaurant, or product name that isn't visually evident (e.g. a logo/packaging in the photo) or provided in "MATCHED DATABASE PRODUCTS" below. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") for anything home-style or unbranded -- do not name a specific commercial product just because it's a well-known association for that food.
 - BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the visible portion) rather than generic estimates, and put the brand in the item name (e.g. "Bell & Evans Chicken Breast"). Raise confidenceScore to 0.9 for those items.
 
 CRITICAL — AVOID SYSTEMATIC UNDERCOUNTING (vision models consistently underestimate calories; correct for this):
@@ -470,9 +471,6 @@ IMPORTANT RULES:
       { role: 'user', content: userText },
     ],
     max_tokens: 1000,
-    // Same rationale as analyzeMealPhoto -- keep repeated calls with the same
-    // description consistent instead of swinging on random sampling.
-    temperature: 0.2,
     response_format: { type: 'json_object' },
   });
 
