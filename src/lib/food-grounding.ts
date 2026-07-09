@@ -36,6 +36,29 @@ export function parseGrams(servingSize: string): number | null {
   return null;
 }
 
+/** Title-case a noisy all-caps/DB-style product name, e.g. "BREADED CHICKEN PATTIES" -> "Breaded Chicken Patties". */
+function titleCase(text: string): string {
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * Build a clean display name for a grounded item, avoiding a duplicated brand
+ * prefix when the matched database row's own name already starts with it
+ * (common for USDA branded imports, e.g. "BELL & EVANS, BREADED CHICKEN PATTIES").
+ */
+function groundedDisplayName(match: Candidate): string {
+  const cleanedName = match.name.replace(/^,?\s*/, '').replace(/,/g, '').trim();
+  if (!match.brand) return titleCase(cleanedName);
+  const brandLower = match.brand.toLowerCase();
+  const alreadyPrefixed = cleanedName.toLowerCase().startsWith(brandLower);
+  const combined = alreadyPrefixed ? cleanedName : `${match.brand} ${cleanedName}`;
+  return titleCase(combined);
+}
+
 interface Candidate {
   name: string;
   brand: string | null;
