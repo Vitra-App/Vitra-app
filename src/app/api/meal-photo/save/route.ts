@@ -111,10 +111,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update daily summary
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
-
+  // Update daily summary for the same client-intended local day used above --
+  // NOT the server's raw "now", which caused this cached summary row to silently
+  // drift onto the wrong day for any evening entry (same class of bug fixed
+  // earlier for loggedAt/dayBucket).
   const totals = mealItemData.reduce(
     (acc, i) => ({
       calories: acc.calories + i.calories,
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
   );
 
   await prisma.dailyNutritionSummary.upsert({
-    where: { userId_date: { userId, date: dayStart } },
+    where: { userId_date: { userId, date: dayBucket } },
     update: {
       calories: { increment: totals.calories },
       proteinG: { increment: totals.proteinG },

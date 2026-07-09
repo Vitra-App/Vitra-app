@@ -470,6 +470,9 @@ IMPORTANT RULES:
       { role: 'user', content: userText },
     ],
     max_tokens: 1000,
+    // Same rationale as analyzeMealPhoto -- keep repeated calls with the same
+    // description consistent instead of swinging on random sampling.
+    temperature: 0.2,
     response_format: { type: 'json_object' },
   });
 

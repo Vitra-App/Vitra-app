@@ -28,7 +28,7 @@ function normalizeWords(text: string): string[] {
 }
 
 /** Extract a gram weight from a serving-size string like "180g", "1 cup (150g)", "350ml". */
-function parseGrams(servingSize: string): number | null {
+export function parseGrams(servingSize: string): number | null {
   const gramMatch = servingSize.match(/(\d+(?:\.\d+)?)\s*g\b/i);
   if (gramMatch) return parseFloat(gramMatch[1]);
   const mlMatch = servingSize.match(/(\d+(?:\.\d+)?)\s*ml\b/i);
@@ -55,7 +55,7 @@ interface Candidate {
   ironMg: number | null;
 }
 
-function scoreMatch(itemWords: string[], candidateName: string): number {
+function scoreMatch(itemWords: string[], candidateName: string, itemName: string, candidateBrand: string | null): number {
   const candWords = normalizeWords(candidateName);
   if (candWords.length === 0 || itemWords.length === 0) return 0;
   const candSet = new Set(candWords);
@@ -66,7 +66,19 @@ function scoreMatch(itemWords: string[], candidateName: string): number {
   // and penalize candidates that are much longer/more specific than the item name.
   const recall = overlap / itemSet.size;
   const lengthPenalty = Math.min(1, itemSet.size / Math.max(candSet.size, 1));
-  return recall * (0.7 + 0.3 * lengthPenalty);
+  let score = recall * (0.7 + 0.3 * lengthPenalty);
+  // Strong bonus when the candidate's own brand name appears verbatim in the AI's
+  // item name (e.g. "Bell & Evans" in both) -- a very high-confidence signal that
+  // the AI is describing this exact branded product, even if the rest of the name
+  // overlap is partial (e.g. AI said "Chicken Patty", DB has "Breaded Chicken Patties").
+  if (candidateBrand) {
+    const brandWords = normalizeWords(candidateBrand);
+    if (brandWords.length > 0) {
+      const brandInItem = brandWords.every((w) => itemName.toLowerCase().includes(w));
+      if (brandInItem) score = Math.min(1, score + 0.3);
+    }
+  }
+  return score;
 }
 
 async function findBestMatch(itemName: string): Promise<Candidate | null> {
@@ -76,7 +88,10 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
   const candidates = await prisma.food.findMany({
     where: {
       NOT: { source: 'ai' },
-      OR: words.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
+      OR: [
+        ...words.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
+        ...words.map((w) => ({ brand: { contains: w, mode: 'insensitive' as const } })),
+      ],
     },
     select: {
       name: true, brand: true, servingWeightG: true, calories: true,
@@ -84,14 +99,14 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
       sodiumMg: true, cholesterolMg: true, saturatedFatG: true, potassiumMg: true,
       vitaminDMcg: true, calciumMg: true, ironMg: true,
     },
-    take: 40,
+    take: 60,
   });
 
   let best: Candidate | null = null;
   let bestScore = 0;
   for (const c of candidates) {
     if (!c.servingWeightG || c.servingWeightG <= 0) continue;
-    const score = scoreMatch(words, c.name);
+    const score = scoreMatch(words, c.name, itemName, c.brand);
     if (score > bestScore) {
       bestScore = score;
       best = c;
@@ -107,11 +122,15 @@ export async function groundAnalysisInDatabase(analysis: MealPhotoAnalysis): Pro
 
   const groundedItems = await Promise.all(
     analysis.items.map(async (item) => {
-      const grams = parseGrams(item.estimatedServingSize);
-      if (grams === null || grams <= 0) return item;
-
       const match = await findBestMatch(item.name);
       if (!match) return item;
+
+      // Prefer the AI's own parsed gram estimate for the portion; if it couldn't be
+      // parsed from the free-text serving size (e.g. "1 patty", "a bun"), fall back to
+      // assuming the AI's per-unit portion matches the database product's own serving
+      // size 1:1 rather than skipping the (already high-confidence) match entirely.
+      const parsedGrams = parseGrams(item.estimatedServingSize);
+      const grams = parsedGrams !== null && parsedGrams > 0 ? parsedGrams : match.servingWeightG;
 
       const perGram = 1 / match.servingWeightG;
       const scale = grams * perGram;
