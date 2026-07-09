@@ -214,6 +214,70 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
   return bestScore >= 0.6 ? best : null;
 }
 
+/**
+ * Deterministic safety net against brand hallucination: even with explicit
+ * prompt instructions, the model sometimes spontaneously names a specific
+ * commercial product for a plain home-style description (e.g. inventing
+ * "Campbell's Spaghetti O's" for a plain "bowl of spaghetti" the user never
+ * associated with any brand). Prompt engineering alone did not reliably stop
+ * this, so this strips any brand name from an item that:
+ *   1. matches a REAL brand in our own database (so we don't mangle a
+ *      legitimate, correctly-identified generic name), AND
+ *   2. does NOT appear anywhere in the user's original description/text --
+ *      i.e. the user truly never mentioned it.
+ * Legitimately brand-matched items (via groundAnalysisInDatabase's own
+ * targeted lookup, or the route's findReferenceFoods reference injection)
+ * are unaffected, since in those cases the brand genuinely was named by the
+ * user and is expected to appear in the source text.
+ */
+export async function stripUnmentionedBrandNames(
+  analysis: MealPhotoAnalysis,
+  originalText: string,
+): Promise<MealPhotoAnalysis> {
+  if (!analysis.items || analysis.items.length === 0) return analysis;
+  const lowerOriginal = originalText.toLowerCase();
+
+  const cleanedItems = await Promise.all(
+    analysis.items.map(async (item) => {
+      // Cheap heuristics to avoid a DB round-trip for every plain item name:
+      // only bother checking names that look like they might contain a brand
+      // (possessive "'s", a comma-separated product listing, or 2+ consecutive
+      // capitalized words that could be a proper noun/company name).
+      const looksBranded =
+        /[A-Za-z]{2,}'s\b/.test(item.name) ||
+        item.name.includes(',') ||
+        /\b([A-Z][a-zA-Z]*\s){2,}/.test(item.name);
+      if (!looksBranded) return item;
+
+      const candidateBrands = await prisma.food.findMany({
+        where: { NOT: { source: 'ai' }, brand: { not: null } },
+        select: { brand: true },
+        distinct: ['brand'],
+        take: 500,
+      });
+
+      let strippedName = item.name;
+      for (const { brand } of candidateBrands) {
+        if (!brand) continue;
+        const brandLower = brand.toLowerCase();
+        if (brandLower.length < 3) continue;
+        if (!strippedName.toLowerCase().includes(brandLower)) continue;
+        // The item name contains a real brand -- only strip it if the user's
+        // own original text never mentioned that brand at all.
+        if (lowerOriginal.includes(brandLower)) continue;
+
+        const re = new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+        strippedName = strippedName.replace(re, '').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s{2,}/g, ' ').trim();
+      }
+
+      if (strippedName.length === 0 || strippedName === item.name) return item;
+      return { ...item, name: strippedName };
+    }),
+  );
+
+  return { ...analysis, items: cleanedItems };
+}
+
 export async function groundAnalysisInDatabase(analysis: MealPhotoAnalysis): Promise<MealPhotoAnalysis> {
   if (!analysis.items || analysis.items.length === 0) return analysis;
 

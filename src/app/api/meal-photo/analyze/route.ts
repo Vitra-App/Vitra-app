@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { analyzeMealPhoto } from '@/lib/ai-service';
-import { groundAnalysisInDatabase, extractBrandPhrases } from '@/lib/food-grounding';
+import { groundAnalysisInDatabase, extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -66,7 +66,12 @@ export async function POST(req: NextRequest) {
   const referenceFoods = await findReferenceFoods(description);
   try {
     const raw = await analyzeMealPhoto(base64, mimeType, description, referenceFoods);
-    const result = await groundAnalysisInDatabase(raw);
+    // Safety net: strip any brand name the model invented on its own that
+    // wasn't actually named in the optional description. With no description
+    // at all, pass an empty string -- any invented brand name is then always
+    // considered "unmentioned" and stripped (there's no text to justify it).
+    const cleaned = await stripUnmentionedBrandNames(raw, description ?? '');
+    const result = await groundAnalysisInDatabase(cleaned);
     return NextResponse.json(result);
   } catch (err) {
     console.error('[meal-photo/analyze] AI analysis failed:', err);
