@@ -85,25 +85,79 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
   const words = normalizeWords(itemName);
   if (words.length === 0) return null;
 
-  const candidates = await prisma.food.findMany({
-    where: {
-      NOT: { source: 'ai' },
-      OR: [
-        ...words.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
-        ...words.map((w) => ({ brand: { contains: w, mode: 'insensitive' as const } })),
-      ],
-    },
-    select: {
-      name: true, brand: true, servingWeightG: true, calories: true,
-      proteinG: true, carbsG: true, fatG: true, fiberG: true, sugarG: true,
-      sodiumMg: true, cholesterolMg: true, saturatedFatG: true, potassiumMg: true,
-      vitaminDMcg: true, calciumMg: true, ironMg: true,
-    },
-    take: 60,
-  });
+  const selectFields = {
+    name: true, brand: true, servingWeightG: true, calories: true,
+    proteinG: true, carbsG: true, fatG: true, fiberG: true, sugarG: true,
+    sodiumMg: true, cholesterolMg: true, saturatedFatG: true, potassiumMg: true,
+    vitaminDMcg: true, calciumMg: true, ironMg: true,
+  } as const;
+
+  // ── Phase 1: targeted brand-phrase lookup ──────────────────────────────
+  // If the item name contains a likely brand (2+ consecutive capitalized/named
+  // words, e.g. "Bell & Evans", "Tyson", "Chobani"), search the `brand` column
+  // directly. This is a small, precise query that can't be crowded out by a
+  // generic word like "chicken" appearing in thousands of unrelated rows.
+  const rawWords = itemName.split(/\s+/).filter(Boolean);
+  const brandPhraseCandidates = new Set<string>();
+  for (let len = Math.min(3, rawWords.length); len >= 2; len--) {
+    for (let i = 0; i + len <= rawWords.length; i++) {
+      const phrase = rawWords.slice(i, i + len).join(' ').replace(/[^\p{L}\p{N}&'\s-]/gu, '').trim();
+      if (phrase.length >= 4) brandPhraseCandidates.add(phrase);
+    }
+  }
+
+  let phase1: Candidate[] = [];
+  if (brandPhraseCandidates.size > 0) {
+    phase1 = await prisma.food.findMany({
+      where: {
+        NOT: { source: 'ai' },
+        OR: Array.from(brandPhraseCandidates).map((p) => ({
+          brand: { contains: p, mode: 'insensitive' as const },
+        })),
+      },
+      select: selectFields,
+      take: 40,
+    });
+  }
 
   let best: Candidate | null = null;
   let bestScore = 0;
+  for (const c of phase1) {
+    if (!c.servingWeightG || c.servingWeightG <= 0) continue;
+    const score = scoreMatch(words, c.name, itemName, c.brand);
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  // A brand-phrase hit is already a very high-confidence signal -- accept it on
+  // a lower bar than the generic fallback below.
+  if (best && bestScore >= 0.5) return best;
+
+  // ── Phase 2: word-overlap fallback, prioritizing the rarest/most specific
+  // word in the item name (e.g. "evans" or "patty" rather than "chicken") so a
+  // fixed take-limit doesn't get crowded out by an extremely common word. ──
+  const wordCounts = await Promise.all(
+    words.map(async (w) => ({
+      word: w,
+      count: await prisma.food.count({ where: { NOT: { source: 'ai' }, name: { contains: w, mode: 'insensitive' as const } } }),
+    })),
+  );
+  const rarestFirst = wordCounts.filter((w) => w.count > 0).sort((a, b) => a.count - b.count);
+  if (rarestFirst.length === 0) return null;
+
+  // Search using only the 2 rarest words -- keeps the candidate set small and
+  // relevant instead of the broadest, most common word dominating the results.
+  const targetWords = rarestFirst.slice(0, 2).map((w) => w.word);
+  const candidates = await prisma.food.findMany({
+    where: {
+      NOT: { source: 'ai' },
+      OR: targetWords.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
+    },
+    select: selectFields,
+    take: 100,
+  });
+
   for (const c of candidates) {
     if (!c.servingWeightG || c.servingWeightG <= 0) continue;
     const score = scoreMatch(words, c.name, itemName, c.brand);
