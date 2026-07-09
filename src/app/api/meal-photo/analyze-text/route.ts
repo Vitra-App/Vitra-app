@@ -68,12 +68,12 @@ export async function POST(req: NextRequest) {
   const referenceFoods = await findReferenceFoods(description);
   try {
     const raw = await analyzeMealText(description, referenceFoods);
-    console.error('[DEBUG-MARKER-9f3a2] raw items before strip:', JSON.stringify(raw.items.map((i) => i.name)));
+    // Safety net: strip any brand name the model invented on its own that the
+    // user never actually mentioned (prompt instructions alone did not
+    // reliably stop this -- see stripUnmentionedBrandNames for detail).
     const cleaned = await stripUnmentionedBrandNames(raw, description);
-    console.error('[DEBUG-MARKER-9f3a2] items after strip:', JSON.stringify(cleaned.items.map((i) => i.name)));
     const result = await groundAnalysisInDatabase(cleaned);
-    console.error('[DEBUG-MARKER-9f3a2] items after ground:', JSON.stringify(result.items.map((i) => i.name)));
-    return NextResponse.json({ ...result, debugMarker: '9f3a2-deployed' });
+    return NextResponse.json(result);
   } catch (err) {
     console.error('[meal-photo/analyze-text] AI analysis failed:', err);
     return NextResponse.json(

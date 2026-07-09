@@ -124,6 +124,28 @@ export function extractBrandPhrases(text: string): string[] {
   return Array.from(phrases);
 }
 
+/**
+ * Find a confident database match for an AI-identified item name, used to
+ * replace the AI's memorized/estimated nutrition values with real ones.
+ *
+ * IMPORTANT: This is intentionally a SINGLE strategy -- a targeted brand-phrase
+ * lookup against the `brand` column -- with NO generic word-overlap fallback.
+ * An earlier version had a "Phase 2" fallback that searched the whole database
+ * by the rarest word in the item name when no brand phrase matched. That was
+ * removed after two reproduced failures:
+ *   1. Many rows have a specific brand/restaurant baked into the `name` string
+ *      but a NULL `brand` column (e.g. "HIP CHICK FARMS, BAKED CHICKEN
+ *      MEATBALLS" has brand=NULL), so filtering by "brand IS NULL" does not
+ *      reliably exclude branded items.
+ *   2. A plain single-word item name like "Spaghetti" or "Meatball" would
+ *      match thousands of unrelated branded rows purely on substring overlap
+ *      (e.g. grounding to "Campbell's Spaghetti O's" or "Hip Chick Farms
+ *      Chicken Meatballs"), with no real signal the user meant that specific
+ *      commercial product.
+ * For anything without an identifiable named brand, the AI's own estimate
+ * (low-temperature, strongly prompted, and passed through
+ * stripUnmentionedBrandNames) is trusted as-is instead.
+ */
 async function findBestMatch(itemName: string): Promise<Candidate | null> {
   const words = normalizeWords(itemName);
   if (words.length === 0) return null;
@@ -135,72 +157,22 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
     vitaminDMcg: true, calciumMg: true, ironMg: true,
   } as const;
 
-  // ── Phase 1: targeted brand-phrase lookup ──────────────────────────────
-  // If the item name contains a likely brand (2+ consecutive capitalized/named
-  // words, e.g. "Bell & Evans", "Tyson", "Chobani"), search the `brand` column
-  // directly. This is a small, precise query that can't be crowded out by a
-  // generic word like "chicken" appearing in thousands of unrelated rows.
-  const rawWords = itemName.split(/\s+/).filter(Boolean);
-  const brandPhraseCandidates = new Set<string>();
-  for (let len = Math.min(3, rawWords.length); len >= 2; len--) {
-    for (let i = 0; i + len <= rawWords.length; i++) {
-      const phrase = rawWords.slice(i, i + len).join(' ').replace(/[^\p{L}\p{N}&'\s-]/gu, '').trim();
-      if (phrase.length >= 4) brandPhraseCandidates.add(phrase);
-    }
-  }
+  const brandPhraseCandidates = extractBrandPhrases(itemName);
+  if (brandPhraseCandidates.length === 0) return null;
 
-  let phase1: Candidate[] = [];
-  if (brandPhraseCandidates.size > 0) {
-    phase1 = await prisma.food.findMany({
-      where: {
-        NOT: { source: 'ai' },
-        OR: Array.from(brandPhraseCandidates).map((p) => ({
-          brand: { contains: p, mode: 'insensitive' as const },
-        })),
-      },
-      select: selectFields,
-      take: 40,
-    });
-  }
-
-  let best: Candidate | null = null;
-  let bestScore = 0;
-  for (const c of phase1) {
-    if (!c.servingWeightG || c.servingWeightG <= 0) continue;
-    const score = scoreMatch(words, c.name, itemName, c.brand);
-    if (score > bestScore) {
-      bestScore = score;
-      best = c;
-    }
-  }
-  // A brand-phrase hit is already a very high-confidence signal -- accept it on
-  // a lower bar than the generic fallback below.
-  if (best && bestScore >= 0.5) return best;
-
-  // ── Phase 2: word-overlap fallback, prioritizing the rarest/most specific
-  // word in the item name (e.g. "evans" or "patty" rather than "chicken") so a
-  // fixed take-limit doesn't get crowded out by an extremely common word. ──
-  const wordCounts = await Promise.all(
-    words.map(async (w) => ({
-      word: w,
-      count: await prisma.food.count({ where: { NOT: { source: 'ai' }, name: { contains: w, mode: 'insensitive' as const } } }),
-    })),
-  );
-  const rarestFirst = wordCounts.filter((w) => w.count > 0).sort((a, b) => a.count - b.count);
-  if (rarestFirst.length === 0) return null;
-
-  // Search using only the 2 rarest words -- keeps the candidate set small and
-  // relevant instead of the broadest, most common word dominating the results.
-  const targetWords = rarestFirst.slice(0, 2).map((w) => w.word);
   const candidates = await prisma.food.findMany({
     where: {
       NOT: { source: 'ai' },
-      OR: targetWords.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
+      OR: brandPhraseCandidates.map((p) => ({
+        brand: { contains: p, mode: 'insensitive' as const },
+      })),
     },
     select: selectFields,
-    take: 100,
+    take: 40,
   });
 
+  let best: Candidate | null = null;
+  let bestScore = 0;
   for (const c of candidates) {
     if (!c.servingWeightG || c.servingWeightG <= 0) continue;
     const score = scoreMatch(words, c.name, itemName, c.brand);
@@ -209,9 +181,10 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
       best = c;
     }
   }
-
-  // Require a reasonably confident match before trusting it over the AI's own estimate.
-  return bestScore >= 0.6 ? best : null;
+  // A brand-phrase hit is already a very high-confidence signal (the user/AI
+  // named an actual product), so accept it on a lower bar than a truly generic
+  // fuzzy match would ever warrant.
+  return bestScore >= 0.5 ? best : null;
 }
 
 /**
@@ -237,43 +210,41 @@ export async function stripUnmentionedBrandNames(
   if (!analysis.items || analysis.items.length === 0) return analysis;
   const lowerOriginal = originalText.toLowerCase();
 
-  const cleanedItems = await Promise.all(
-    analysis.items.map(async (item) => {
-      // Cheap heuristics to avoid a DB round-trip for every plain item name:
-      // only bother checking names that look like they might contain a brand
-      // (possessive "'s", a comma-separated product listing, or 2+ consecutive
-      // capitalized words that could be a proper noun/company name).
-      const looksBranded =
-        /[A-Za-z]{2,}'s\b/.test(item.name) ||
-        item.name.includes(',') ||
-        /\b([A-Z][a-zA-Z]*\s){2,}/.test(item.name);
-      if (!looksBranded) return item;
+  const candidateBrands = await prisma.food.findMany({
+    where: { NOT: { source: 'ai' }, brand: { not: null } },
+    select: { brand: true },
+    distinct: ['brand'],
+    take: 500,
+  });
 
-      const candidateBrands = await prisma.food.findMany({
-        where: { NOT: { source: 'ai' }, brand: { not: null } },
-        select: { brand: true },
-        distinct: ['brand'],
-        take: 500,
-      });
+  const cleanedItems = analysis.items.map((item) => {
+    // Cheap heuristic to skip plain names entirely: only bother checking names
+    // that look like they might contain a brand (possessive "'s", a comma-
+    // separated product listing, or 2+ consecutive capitalized words that
+    // could be a proper noun/company name).
+    const looksBranded =
+      /[A-Za-z]{2,}'s\b/.test(item.name) ||
+      item.name.includes(',') ||
+      /\b([A-Z][a-zA-Z]*\s){2,}/.test(item.name);
+    if (!looksBranded) return item;
 
-      let strippedName = item.name;
-      for (const { brand } of candidateBrands) {
-        if (!brand) continue;
-        const brandLower = brand.toLowerCase();
-        if (brandLower.length < 3) continue;
-        if (!strippedName.toLowerCase().includes(brandLower)) continue;
-        // The item name contains a real brand -- only strip it if the user's
-        // own original text never mentioned that brand at all.
-        if (lowerOriginal.includes(brandLower)) continue;
+    let strippedName = item.name;
+    for (const { brand } of candidateBrands) {
+      if (!brand) continue;
+      const brandLower = brand.toLowerCase();
+      if (brandLower.length < 3) continue;
+      if (!strippedName.toLowerCase().includes(brandLower)) continue;
+      // The item name contains a real brand -- only strip it if the user's
+      // own original text never mentioned that brand at all.
+      if (lowerOriginal.includes(brandLower)) continue;
 
-        const re = new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
-        strippedName = strippedName.replace(re, '').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s{2,}/g, ' ').trim();
-      }
+      const re = new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+      strippedName = strippedName.replace(re, '').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s{2,}/g, ' ').trim();
+    }
 
-      if (strippedName.length === 0 || strippedName === item.name) return item;
-      return { ...item, name: strippedName };
-    }),
-  );
+    if (strippedName.length === 0 || strippedName === item.name) return item;
+    return { ...item, name: strippedName };
+  });
 
   return { ...analysis, items: cleanedItems };
 }
