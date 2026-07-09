@@ -115,11 +115,27 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
     vitaminDMcg: true, calciumMg: true, ironMg: true,
   } as const;
 
-  // ── Phase 1: targeted brand-phrase lookup ──────────────────────────────
-  // If the item name contains a likely brand (2+ consecutive capitalized/named
-  // words, e.g. "Bell & Evans", "Tyson", "Chobani"), search the `brand` column
-  // directly. This is a small, precise query that can't be crowded out by a
-  // generic word like "chicken" appearing in thousands of unrelated rows.
+  // Targeted brand-phrase lookup -- this is the ONLY grounding strategy.
+  // If the item name contains a likely brand (2+ consecutive words, e.g. "Bell
+  // & Evans", "Chobani"), search the `brand` column directly. This is a small,
+  // precise query that can't be crowded out by a generic word appearing in
+  // thousands of unrelated rows.
+  //
+  // We deliberately do NOT fall back to fuzzy word-overlap matching against the
+  // whole database for generic, un-branded descriptions (e.g. "spaghetti",
+  // "meatballs"). Two real, reproduced failures showed why that's unsafe:
+  //   1. Many rows have a specific brand/restaurant baked into the `name`
+  //      string but a NULL `brand` column (e.g. a "HIP CHICK FARMS, BAKED
+  //      CHICKEN MEATBALLS" row has brand=NULL), so a generic "brand IS NULL"
+  //      filter does not reliably exclude branded items.
+  //   2. No singular/plural stemming means a plain generic entry ("Meatball")
+  //      can silently be excluded from a substring search for the AI's plural
+  //      wording ("meatballs"), leaving ONLY mismatched branded products in
+  //      the candidate pool -- e.g. grounding a plain "3 meatballs" to "Hip
+  //      Chick Farms Chicken Meatballs", or "spaghetti" to "Campbell's
+  //      Spaghetti O's" (a canned, watered-down product, not real pasta).
+  // For anything without an identifiable named brand, the AI's own estimate
+  // (now low-temperature and rigorously prompted) is trusted as-is instead.
   const rawWords = itemName.split(/\s+/).filter(Boolean);
   const brandPhraseCandidates = new Set<string>();
   for (let len = Math.min(3, rawWords.length); len >= 2; len--) {
@@ -128,20 +144,18 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
       if (phrase.length >= 4) brandPhraseCandidates.add(phrase);
     }
   }
+  if (brandPhraseCandidates.size === 0) return null;
 
-  let phase1: Candidate[] = [];
-  if (brandPhraseCandidates.size > 0) {
-    phase1 = await prisma.food.findMany({
-      where: {
-        NOT: { source: 'ai' },
-        OR: Array.from(brandPhraseCandidates).map((p) => ({
-          brand: { contains: p, mode: 'insensitive' as const },
-        })),
-      },
-      select: selectFields,
-      take: 40,
-    });
-  }
+  const phase1 = await prisma.food.findMany({
+    where: {
+      NOT: { source: 'ai' },
+      OR: Array.from(brandPhraseCandidates).map((p) => ({
+        brand: { contains: p, mode: 'insensitive' as const },
+      })),
+    },
+    select: selectFields,
+    take: 40,
+  });
 
   let best: Candidate | null = null;
   let bestScore = 0;
@@ -153,45 +167,10 @@ async function findBestMatch(itemName: string): Promise<Candidate | null> {
       best = c;
     }
   }
-  // A brand-phrase hit is already a very high-confidence signal -- accept it on
-  // a lower bar than the generic fallback below.
-  if (best && bestScore >= 0.5) return best;
-
-  // ── Phase 2: word-overlap fallback, prioritizing the rarest/most specific
-  // word in the item name (e.g. "evans" or "patty" rather than "chicken") so a
-  // fixed take-limit doesn't get crowded out by an extremely common word. ──
-  const wordCounts = await Promise.all(
-    words.map(async (w) => ({
-      word: w,
-      count: await prisma.food.count({ where: { NOT: { source: 'ai' }, name: { contains: w, mode: 'insensitive' as const } } }),
-    })),
-  );
-  const rarestFirst = wordCounts.filter((w) => w.count > 0).sort((a, b) => a.count - b.count);
-  if (rarestFirst.length === 0) return null;
-
-  // Search using only the 2 rarest words -- keeps the candidate set small and
-  // relevant instead of the broadest, most common word dominating the results.
-  const targetWords = rarestFirst.slice(0, 2).map((w) => w.word);
-  const candidates = await prisma.food.findMany({
-    where: {
-      NOT: { source: 'ai' },
-      OR: targetWords.map((w) => ({ name: { contains: w, mode: 'insensitive' as const } })),
-    },
-    select: selectFields,
-    take: 100,
-  });
-
-  for (const c of candidates) {
-    if (!c.servingWeightG || c.servingWeightG <= 0) continue;
-    const score = scoreMatch(words, c.name, itemName, c.brand);
-    if (score > bestScore) {
-      bestScore = score;
-      best = c;
-    }
-  }
-
-  // Require a reasonably confident match before trusting it over the AI's own estimate.
-  return bestScore >= 0.6 ? best : null;
+  // A brand-phrase hit is already a very high-confidence signal (the user/AI
+  // named an actual product), so accept it on a lower bar than a truly generic
+  // fuzzy match would ever warrant.
+  return bestScore >= 0.5 ? best : null;
 }
 
 export async function groundAnalysisInDatabase(analysis: MealPhotoAnalysis): Promise<MealPhotoAnalysis> {
