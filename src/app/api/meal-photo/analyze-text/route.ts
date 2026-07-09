@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { analyzeMealText } from '@/lib/ai-service';
-import { groundAnalysisInDatabase } from '@/lib/food-grounding';
+import { groundAnalysisInDatabase, extractBrandPhrases } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -10,35 +10,30 @@ const schema = z.object({
   description: z.string().min(2),
 });
 
-// Words we ignore when hunting for a brand/product in the description.
-const STOPWORDS = new Set([
-  'the', 'a', 'an', 'and', 'or', 'with', 'of', 'my', 'some', 'this', 'that', 'i', 'ate', 'had',
-  'for', 'from', 'on', 'in', 'to', 'plus', 'grilled', 'baked', 'fried', 'roasted', 'raw',
-  'cooked', 'fresh', 'breakfast', 'lunch', 'dinner', 'snack', 'meal', 'plate', 'bowl',
-]);
-
 /**
- * Look up branded products the user named in their description so the AI can
- * use real database nutrition values (e.g. "Bell & Evans chicken").
+ * Look up branded products the user actually named in their description (e.g.
+ * "Bell & Evans chicken") so the AI can use real database nutrition values.
+ *
+ * Only matches genuine 2-3 word brand-like phrases against the `brand` column
+ * -- NOT single generic words against `name`. Matching single words like
+ * "meatballs" or "spaghetti" against product names previously caused the AI to
+ * be told "the user named this exact brand" for things they never mentioned
+ * (e.g. a plain "3 meatballs" got silently treated as "Hip Chick Farms Baked
+ * Chicken Meatballs" because that unrelated product's name happened to contain
+ * the word "meatballs"). A real brand name is always 2+ words, so requiring
+ * that eliminates this entire class of false-positive brand injection.
  */
 async function findReferenceFoods(description: string) {
   const cleaned = description.replace(/[^\p{L}\p{N}&'\s-]/gu, ' ').trim();
-  if (cleaned.length < 3) return [];
+  if (cleaned.length < 4) return [];
 
-  const tokens = cleaned
-    .split(/\s+/)
-    .filter((w) => w.length >= 2 && !STOPWORDS.has(w.toLowerCase()));
-  if (tokens.length === 0) return [];
-
-  const phrases = Array.from(new Set([cleaned, ...tokens]));
+  const phrases = extractBrandPhrases(cleaned);
+  if (phrases.length === 0) return [];
 
   const results = await prisma.food.findMany({
     where: {
       NOT: { source: 'ai' },
-      OR: phrases.flatMap((p) => [
-        { brand: { contains: p, mode: 'insensitive' as const } },
-        { name: { contains: p, mode: 'insensitive' as const } },
-      ]),
+      OR: phrases.map((p) => ({ brand: { contains: p, mode: 'insensitive' as const } })),
     },
     select: {
       name: true, brand: true, servingSize: true, calories: true,
@@ -47,8 +42,9 @@ async function findReferenceFoods(description: string) {
     take: 8,
   });
 
-  return results.sort((a, b) => (b.brand ? 1 : 0) - (a.brand ? 1 : 0));
+  return results;
 }
+
 
 export async function POST(req: NextRequest) {
   const session = await auth();
