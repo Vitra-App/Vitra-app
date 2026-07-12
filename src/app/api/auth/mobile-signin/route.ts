@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { encode } from '@auth/core/jwt';
 import { prisma } from '@/lib/prisma';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 const MAX_AGE = 30 * 24 * 60 * 60; // 30 days
 
@@ -11,6 +12,24 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
+    }
+
+    // Brute-force protection: limit by IP (covers spray attacks) and by email
+    // (covers distributed/botnet attacks targeting a single account).
+    const ip = getClientIp(req);
+    const ipLimit = rateLimit(`signin-ip:${ip}`, 20, 15 * 60 * 1000);
+    if (!ipLimit.ok) {
+      return NextResponse.json(
+        { error: 'Too many sign-in attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)) } }
+      );
+    }
+    const emailLimit = rateLimit(`signin-email:${String(email).toLowerCase()}`, 10, 15 * 60 * 1000);
+    if (!emailLimit.ok) {
+      return NextResponse.json(
+        { error: 'Too many sign-in attempts for this account. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(emailLimit.retryAfterMs / 1000)) } }
+      );
     }
 
     const user = await prisma.user.findUnique({ where: { email: String(email) } });

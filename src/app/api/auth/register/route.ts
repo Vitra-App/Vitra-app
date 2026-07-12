@@ -4,6 +4,7 @@ import { sendVerificationEmail } from '@/lib/email';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 const schema = z.object({
   name: z.string().min(1).max(100),
@@ -12,6 +13,16 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Prevent mass account-creation / signup spam from a single source.
+  const ip = getClientIp(req);
+  const ipLimit = rateLimit(`register-ip:${ip}`, 8, 60 * 60 * 1000);
+  if (!ipLimit.ok) {
+    return NextResponse.json(
+      { error: 'Too many accounts created recently. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)) } }
+    );
+  }
+
   const body = await req.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

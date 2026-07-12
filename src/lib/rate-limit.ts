@@ -4,6 +4,8 @@
  * Resets on server restart — acceptable for anti-abuse, not billing.
  */
 
+import type { NextRequest } from 'next/server';
+
 interface Window {
   count: number;
   resetAt: number; // ms timestamp
@@ -37,4 +39,17 @@ export function rateLimit(
   }
 
   return { ok: false, retryAfterMs: entry.resetAt - now };
+}
+
+/**
+ * Extracts the caller's IP for rate-limiting unauthenticated endpoints (register, login,
+ * password reset, etc.) where there's no userId yet to key on. Railway sits behind a proxy,
+ * so the real client IP arrives via `x-forwarded-for` (first entry in the chain).
+ */
+export function getClientIp(req: NextRequest): string {
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+  return 'unknown';
 }

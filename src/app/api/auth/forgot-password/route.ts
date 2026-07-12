@@ -2,11 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendPasswordResetEmail } from '@/lib/email';
 import crypto from 'crypto';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   const { email } = await req.json().catch(() => ({}));
   if (!email || typeof email !== 'string') {
     return NextResponse.json({ error: 'Email required' }, { status: 400 });
+  }
+
+  // Prevent password-reset email spam / enumeration flooding.
+  const ip = getClientIp(req);
+  const ipLimit = rateLimit(`forgot-pw-ip:${ip}`, 10, 60 * 60 * 1000);
+  if (!ipLimit.ok) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)) } }
+    );
+  }
+  const emailLimit = rateLimit(`forgot-pw-email:${email.toLowerCase().trim()}`, 4, 60 * 60 * 1000);
+  if (!emailLimit.ok) {
+    // Still return ok:true to avoid leaking that the email exists / was throttled.
+    return NextResponse.json({ ok: true });
   }
 
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });

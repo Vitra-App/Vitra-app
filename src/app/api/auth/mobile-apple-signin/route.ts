@@ -2,11 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { encode } from '@auth/core/jwt';
 import { prisma } from '@/lib/prisma';
 import appleSignin from 'apple-signin-auth';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 const MAX_AGE = 30 * 24 * 60 * 60;
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+    const ipLimit = rateLimit(`apple-signin-ip:${ip}`, 30, 60 * 60 * 1000);
+    if (!ipLimit.ok) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil(ipLimit.retryAfterMs / 1000)) } }
+      );
+    }
+
     const { identityToken, appleUserId, email, fullName } = await req.json();
 
     if (!identityToken || !appleUserId) {
