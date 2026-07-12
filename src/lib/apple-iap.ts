@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // Your app's bundle identifier — must match `PRODUCT_BUNDLE_IDENTIFIER` in the iOS project.
-const BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.michaelalexandrou.Vitra-iOS';
+const BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.michaelalexandrou.vitra';
 
 // Apple's App-Specific Shared Secret is NOT required for StoreKit2 JWS verification —
 // transactions are signed by Apple and verified offline against Apple's root CA chain.
