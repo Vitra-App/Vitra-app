@@ -19,17 +19,17 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts           Account[]
-  sessions           Session[]
-  profile            UserProfile?
-  meals              Meal[]
-  bloodworkMarkers   BloodworkMarker[]
-  aiInsights         AIInsight[]
-  subscriptionStatus SubscriptionStatus?
-  habits             Habit[]
-  favoriteFoods      FavoriteFood[]
+  accounts            Account[]
+  sessions            Session[]
+  profile             UserProfile?
+  meals               Meal[]
+  bloodworkMarkers    BloodworkMarker[]
+  aiInsights          AIInsight[]
+  subscriptionStatus  SubscriptionStatus?
+  habits              Habit[]
+  favoriteFoods       FavoriteFood[]
   passwordResetTokens PasswordResetToken[]
-  weightEntries      WeightEntry[]
+  weightEntries       WeightEntry[]
 }
 
 model Account {
@@ -71,22 +71,22 @@ model VerificationToken {
 // ─── User profile ────────────────────────────────────────────────────────────
 
 model UserProfile {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  dateOfBirth     DateTime?
-  sex             String?  // "male" | "female" | "other" | "prefer_not_to_say"
-  heightCm        Float?
-  weightKg        Float?
-  goal            String?  // "lose_weight" | "maintain" | "gain_weight"
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  dateOfBirth          DateTime?
+  sex                  String? // "male" | "female" | "other" | "prefer_not_to_say"
+  heightCm             Float?
+  weightKg             Float?
+  goal                 String? // "lose_weight" | "maintain" | "gain_weight"
   weeklyWeightChangeKg Float? // target weekly change; negative = lose, positive = gain, null/0 = maintain
-  activityLevel   String?  // "sedentary" | "lightly_active" | "moderately_active" | "very_active" | "extra_active"
-  dietaryPrefs    String[] // e.g. ["vegetarian", "gluten_free"]
-  caloricTarget   Int?
-  proteinTargetG  Float?
-  carbTargetG     Float?
-  fatTargetG      Float?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  activityLevel        String? // "sedentary" | "lightly_active" | "moderately_active" | "very_active" | "extra_active"
+  dietaryPrefs         String[] // e.g. ["vegetarian", "gluten_free"]
+  caloricTarget        Int?
+  proteinTargetG       Float?
+  carbTargetG          Float?
+  fatTargetG           Float?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -100,9 +100,9 @@ model Food {
   barcode        String? @unique
   source         String? // 'seed' | 'custom' | 'openfoodfacts' | 'usda'
   externalId     String? // e.g. USDA fdcId or OFF code
-  servingSize    String  // e.g. "100g", "1 cup", "1 slice"
-  servingWeightG Float   // grams for the serving size above
-  densityGPerMl  Float?  // optional g/mL for accurate volume conversions (defaults to 1.0)
+  servingSize    String // e.g. "100g", "1 cup", "1 slice"
+  servingWeightG Float // grams for the serving size above
+  densityGPerMl  Float? // optional g/mL for accurate volume conversions (defaults to 1.0)
   calories       Float
   proteinG       Float
   carbsG         Float
@@ -116,28 +116,28 @@ model Food {
   vitaminDMcg    Float?
   calciumMg      Float?
   ironMg         Float?
-  isCustom       Boolean  @default(false)
-  createdBy      String?  // userId if user-created
+  isCustom       Boolean @default(false)
+  createdBy      String? // userId if user-created
 
-  mealItems    MealItem[]
-  favoritedBy  FavoriteFood[]
+  mealItems   MealItem[]
+  favoritedBy FavoriteFood[]
 
-  @@index([name])
   @@unique([source, externalId])
+  @@index([name])
 }
 
 // ─── Meal logging ────────────────────────────────────────────────────────────
 
 model Meal {
-  id          String   @id @default(cuid())
-  userId      String
-  loggedAt    DateTime @default(now())
-  mealType    String   // "breakfast" | "lunch" | "dinner" | "snack"
-  notes       String?
-  photoUrl    String?
-  aiAnalyzed  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  loggedAt   DateTime @default(now())
+  mealType   String // "breakfast" | "lunch" | "dinner" | "snack"
+  notes      String?
+  photoUrl   String?
+  aiAnalyzed Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   mealItems MealItem[]
@@ -146,24 +146,24 @@ model Meal {
 }
 
 model MealItem {
-  id             String @id @default(cuid())
-  mealId         String
-  foodId         String
-  servingCount   Float  // multiplier of food.servingSize
+  id            String @id @default(cuid())
+  mealId        String
+  foodId        String
+  servingCount  Float // multiplier of food.servingSize
   // Snapshot of nutrients at logging time (denormalised for performance)
-  calories       Float
-  proteinG       Float
-  carbsG         Float
-  fatG           Float
-  fiberG         Float?
-  sugarG         Float?
-  sodiumMg       Float?
-  cholesterolMg  Float?
-  saturatedFatG  Float?
-  potassiumMg    Float?
-  vitaminDMcg    Float?
-  calciumMg      Float?
-  ironMg         Float?
+  calories      Float
+  proteinG      Float
+  carbsG        Float
+  fatG          Float
+  fiberG        Float?
+  sugarG        Float?
+  sodiumMg      Float?
+  cholesterolMg Float?
+  saturatedFatG Float?
+  potassiumMg   Float?
+  vitaminDMcg   Float?
+  calciumMg     Float?
+  ironMg        Float?
 
   meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
   food Food @relation(fields: [foodId], references: [id])
@@ -198,11 +198,11 @@ model DailyNutritionSummary {
 // ─── Weight entries ──────────────────────────────────────────────────────────
 
 model WeightEntry {
-  id        String   @id @default(cuid())
-  userId    String
-  weightKg  Float
-  notes     String?
-  loggedAt  DateTime @default(now())
+  id       String   @id @default(cuid())
+  userId   String
+  weightKg Float
+  notes    String?
+  loggedAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -212,16 +212,16 @@ model WeightEntry {
 // ─── Bloodwork ───────────────────────────────────────────────────────────────
 
 model BloodworkMarker {
-  id             String   @id @default(cuid())
-  userId         String
-  markerName     String   // e.g. "LDL", "Vitamin D"
-  value          Float
-  unit           String   // e.g. "mg/dL", "ng/mL"
-  referenceMin   Float?
-  referenceMax   Float?
-  testedAt       DateTime
-  notes          String?
-  createdAt      DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  markerName   String // e.g. "LDL", "Vitamin D"
+  value        Float
+  unit         String // e.g. "mg/dL", "ng/mL"
+  referenceMin Float?
+  referenceMax Float?
+  testedAt     DateTime
+  notes        String?
+  createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -231,11 +231,11 @@ model BloodworkMarker {
 // ─── AI insights ─────────────────────────────────────────────────────────────
 
 model AIInsight {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  insightType String   // "daily_outlook" | "weekly_summary" | "bloodwork_summary"
-  content     String   @db.Text
-  generatedAt DateTime @default(now())
+  insightType String // "daily_outlook" | "weekly_summary" | "bloodwork_summary"
+  content     String    @db.Text
+  generatedAt DateTime  @default(now())
   contextDate DateTime? // relevant date for daily/weekly insights
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -246,14 +246,19 @@ model AIInsight {
 // ─── Subscription ────────────────────────────────────────────────────────────
 
 model SubscriptionStatus {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  tier           String   @default("free") // "free" | "pro"
-  stripeCustomerId   String?
-  stripeSubId        String?
-  currentPeriodEnd   DateTime?
-  cancelAtPeriodEnd  Boolean  @default(false)
-  updatedAt      DateTime @updatedAt
+  id                         String    @id @default(cuid())
+  userId                     String    @unique
+  tier                       String    @default("free") // "free" | "pro"
+  stripeCustomerId           String?
+  stripeSubId                String?
+  currentPeriodEnd           DateTime?
+  cancelAtPeriodEnd          Boolean   @default(false)
+  // Apple In-App Purchase (StoreKit2) — the iOS app's purchase path. Independent from Stripe,
+  // which is used for web checkout only (Apple requires native IAP on iOS, see Guideline 3.1.1).
+  platform                   String?   @default("web") // "web" | "ios"
+  appleOriginalTransactionId String?   @unique
+  appleProductId             String?
+  updatedAt                  DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -280,13 +285,13 @@ model Habit {
   userId          String
   name            String
   icon            String?
-  category        String?  // "nutrition" | "lifestyle" | "manual"
+  category        String? // "nutrition" | "lifestyle" | "manual"
   frequency       String   @default("daily") // "daily" | "weekly"
-  sourceType      String?  // "bloodwork" | "manual"
-  sourceRef       String?  // marker name that triggered this habit
+  sourceType      String? // "bloodwork" | "manual"
+  sourceRef       String? // marker name that triggered this habit
   isActive        Boolean  @default(true)
   streak          Int      @default(0)
-  lastCheckedDate String?  // "YYYY-MM-DD"
+  lastCheckedDate String? // "YYYY-MM-DD"
   createdAt       DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
