@@ -30,6 +30,7 @@ model User {
   favoriteFoods       FavoriteFood[]
   passwordResetTokens PasswordResetToken[]
   weightEntries       WeightEntry[]
+  customMeals         CustomMeal[]
 }
 
 model Account {
@@ -119,8 +120,9 @@ model Food {
   isCustom       Boolean @default(false)
   createdBy      String? // userId if user-created
 
-  mealItems   MealItem[]
-  favoritedBy FavoriteFood[]
+  mealItems       MealItem[]
+  favoritedBy     FavoriteFood[]
+  customMealItems CustomMealItem[]
 
   @@unique([source, externalId])
   @@index([name])
@@ -276,6 +278,31 @@ model FavoriteFood {
 
   @@unique([userId, foodId])
   @@index([userId])
+}
+
+// ─── Custom meals (user-built combos of foods, for quick re-logging) ────────
+
+model CustomMeal {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CustomMealItem[]
+
+  @@index([userId])
+}
+
+model CustomMealItem {
+  id           String @id @default(cuid())
+  customMealId String
+  foodId       String
+  servingCount Float
+
+  customMeal CustomMeal @relation(fields: [customMealId], references: [id], onDelete: Cascade)
+  food       Food       @relation(fields: [foodId], references: [id])
 }
 
 // ─── Habits ──────────────────────────────────────────────────────────────────
