@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest) {
 
   // Merge incoming fields with whatever is already stored, then auto-derive
   // calorie + macro targets from the resulting profile. This ensures the
-  // targets always reflect the user's current weight / sex / age / goal.
+  // calorie target always reflects the user's current weight / sex / age / goal.
   const existing = await prisma.userProfile.findUnique({ where: { userId } });
   const merged = {
     sex: profileData.sex ?? existing?.sex ?? null,
@@ -76,11 +76,34 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  // Server-derived targets always win over whatever the client sent.
+  // The user can only ever set a custom PROTEIN/CARB/FAT target -- the app never
+  // lets them directly edit calories, so the server-derived calorie target always
+  // wins. But if this request explicitly includes macro targets (i.e. the user
+  // just chose a preset or typed custom grams/percentages in Edit Profile), those
+  // MUST win over the auto-calculated formula values, otherwise every profile
+  // save silently discards the user's chosen macros back to the 1.6-2.0g/kg
+  // protein default. This was the bug: `...(derived ?? {})` used to unconditionally
+  // overwrite proteinTargetG/carbTargetG/fatTargetG on every save.
+  const clientProvidedMacros =
+    profileData.proteinTargetG !== undefined ||
+    profileData.carbTargetG !== undefined ||
+    profileData.fatTargetG !== undefined;
+
   const finalData = {
     ...profileData,
     dateOfBirth: dob,
-    ...(derived ?? {}),
+    ...(derived
+      ? {
+          caloricTarget: derived.caloricTarget,
+          ...(clientProvidedMacros
+            ? {}
+            : {
+                proteinTargetG: derived.proteinTargetG,
+                carbTargetG: derived.carbTargetG,
+                fatTargetG: derived.fatTargetG,
+              }),
+        }
+      : {}),
   };
 
   const profile = await prisma.userProfile.upsert({
