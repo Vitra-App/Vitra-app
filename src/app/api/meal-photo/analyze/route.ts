@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { analyzeMealPhoto } from '@/lib/ai-service';
+import { analyzeMealPhoto, validateMealAnalysis } from '@/lib/ai-service';
 import { groundAnalysisInDatabase, extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
@@ -72,6 +72,9 @@ export async function POST(req: NextRequest) {
     // considered "unmentioned" and stripped (there's no text to justify it).
     const cleaned = await stripUnmentionedBrandNames(raw, description ?? '');
     const result = await groundAnalysisInDatabase(cleaned);
+    // Deterministic sanity-check, computed here rather than trusted from the model --
+    // catches internally-inconsistent results (e.g. items don't sum to the total).
+    result.validationWarnings = validateMealAnalysis(result);
     return NextResponse.json(result);
   } catch (err) {
     console.error('[meal-photo/analyze] AI analysis failed:', err);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { analyzeMealText } from '@/lib/ai-service';
+import { analyzeMealText, validateMealAnalysis } from '@/lib/ai-service';
 import { extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
@@ -15,13 +15,10 @@ const schema = z.object({
  * "Bell & Evans chicken") so the AI can use real database nutrition values.
  *
  * Only matches genuine 2-3 word brand-like phrases against the `brand` column
- * -- NOT single generic words against `name`. Matching single words like
- * "meatballs" or "spaghetti" against product names previously caused the AI to
- * be told "the user named this exact brand" for things they never mentioned
- * (e.g. a plain "3 meatballs" got silently treated as "Hip Chick Farms Baked
- * Chicken Meatballs" because that unrelated product's name happened to contain
- * the word "meatballs"). A real brand name is always 2+ words, so requiring
- * that eliminates this entire class of false-positive brand injection.
+ * -- NOT single generic words against `name`. A real brand name is always 2+
+ * words, so requiring that eliminates false-positive brand injection (e.g. a
+ * plain "3 meatballs" getting matched to an unrelated branded product just
+ * because its name happens to contain the word "meatballs").
  */
 async function findReferenceFoods(description: string) {
   const cleaned = description.replace(/[^\p{L}\p{N}&'\s-]/gu, ' ').trim();
@@ -82,6 +79,7 @@ export async function POST(req: NextRequest) {
     // scan results are now the model's own numbers end-to-end, only cleaned
     // of any hallucinated brand name the user never actually typed.
     const cleaned = await stripUnmentionedBrandNames(raw, description);
+    cleaned.validationWarnings = validateMealAnalysis(cleaned);
     return NextResponse.json(cleaned);
   } catch (err) {
     console.error('[meal-photo/analyze-text] AI analysis failed:', err);

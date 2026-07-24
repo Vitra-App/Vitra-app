@@ -34,6 +34,8 @@ export interface MealPhotoAnalysis {
    estimatedServingSize: string;
    quantity: number;
    calories: number;
+   minCalories?: number;
+   maxCalories?: number;
    proteinG: number;
    carbsG: number;
    fatG: number;
@@ -46,6 +48,8 @@ export interface MealPhotoAnalysis {
    vitaminDMcg: number;
    calciumMg: number;
    ironMg: number;
+   /** Brief plain-language assumptions this item's estimate depends on (e.g. "assumed 1 tbsp oil for sauté"). */
+   assumptions?: string[];
  }>;
  plateEstimate?: {
    type: string;
@@ -55,11 +59,21 @@ export interface MealPhotoAnalysis {
  };
  hiddenCalories?: string[];
  totalCalories: number;
+ /** Plausible minimum total calories -- honest uncertainty range, not just a point estimate. */
+ minCalories?: number;
+ /** Plausible maximum total calories. */
+ maxCalories?: number;
  totalProteinG: number;
  totalCarbsG: number;
  totalFatG: number;
  confidenceScore: number; // 0–1
+ /** Main drivers of uncertainty in this estimate (e.g. "dressing amount not visible", "partially occluded rice"). */
+ uncertaintyDrivers?: string[];
+ /** A single targeted question that would materially improve accuracy if answered, or null if not needed. */
+ clarifyingQuestion?: string | null;
  notes: string;
+ /** Populated server-side (not by the model) -- deterministic sanity-check warnings. */
+ validationWarnings?: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -355,17 +369,27 @@ Ask yourself: Does this amount of food physically fit on the estimated plate/bow
 STEP 8 — CONFIDENCE
 confidenceScore: 0.95–1.0 very confident (container + all items clearly visible), 0.80–0.94 good estimate (container visible, minor occlusion), 0.60–0.79 moderate uncertainty (partial visibility or no reference objects), below 0.60 recommend the user retake the photo (state this in notes).
 
+STEP 9 — UNCERTAINTY RANGE
+For the meal total, and optionally per item, estimate a plausible minCalories and maxCalories range around your best-estimate calories -- NOT a generic +/-10%. Base the width of the range on actual uncertainty: narrow for a clearly visible packaged item with a label, wide for a deep bowl, mixed dish, restaurant food, or partially occluded plate. The best estimate (calories/totalCalories) should be your single most probable value, not automatically the midpoint of the range.
+
+STEP 10 — CLARIFYING QUESTION (optional, at most one)
+If -- and only if -- one specific piece of missing information would materially change the total (e.g. dressing type/amount on a salad, whether chicken was fried vs grilled, whether there's pasta hidden under sauce), set "clarifyingQuestion" to ONE short, specific question. Otherwise set it to null. Always still provide a complete best-estimate answer even when asking -- the question refines a future re-scan, it never blocks this result.
+
 Return this exact JSON structure:
 {
  "mealName": "",
- "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
+ "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "minCalories": 0, "maxCalories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0, "assumptions": [""] }],
  "plateEstimate": { "type": "", "diameterInches": 0, "fillPercent": 0, "estimatedVolumeMl": 0 },
  "hiddenCalories": [""],
  "totalCalories": 0,
+ "minCalories": 0,
+ "maxCalories": 0,
  "totalProteinG": 0,
  "totalCarbsG": 0,
  "totalFatG": 0,
  "confidenceScore": 0.0,
+ "uncertaintyDrivers": [""],
+ "clarifyingQuestion": null,
  "notes": ""
 }
 
@@ -375,6 +399,8 @@ IMPORTANT RULES:
 - All macro fields = values for ONE unit of estimatedServingSize
 - notes field: summarize your container/portion/hidden-calorie reasoning and state confidence explicitly (e.g. "Standard 10in plate, ~70% full. Chicken ~190g (visible density + shrinkage), rice ~2.2 cups compressed, added ~1.5 tbsp oil for sauté. Confidence: good estimate.")
 - hiddenCalories: list plain-language items like "Possible hidden calories: cooking oil in stir-fry", "Possible butter on toast" — empty array if genuinely none likely
+- uncertaintyDrivers: short plain-language list of what's actually driving the min/max spread (e.g. "Amount of dressing on salad not visible", "Rice depth in deep bowl uncertain") -- empty array only if confidence is very high
+- assumptions (per item): 1-2 short phrases for anything you had to assume for that specific item (e.g. "assumed grilled not fried", "assumed 1 tbsp oil")
 - NEVER invent a specific brand, restaurant, or product name that isn't visually evident (e.g. a logo/packaging in the photo) or provided in "MATCHED DATABASE PRODUCTS" below. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") for anything home-style or unbranded -- do not name a specific commercial product just because it's a well-known association for that food.
 - BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the visible portion) rather than generic estimates, and put the brand in the item name (e.g. "Bell & Evans Chicken Breast"). Raise confidenceScore to 0.9 for those items.
 
@@ -440,22 +466,30 @@ PORTION ESTIMATION RULES:
 1. If the user gives a quantity (e.g. "4 scrambled eggs", "2 slices of bacon"), use that exact count.
 2. If no quantity is given for an item, assume ONE standard/typical serving (e.g. "a bagel" = 1 medium bagel ~90g, "rice" = 1 cup cooked) — but lean toward the larger end of "typical" (e.g. a restaurant/takeout item mentioned by name is usually bigger than a home-cooked default).
 3. Use realistic USDA nutrition database values for each food at that quantity/serving size.
-4. Do NOT ask clarifying questions — always produce your best estimate.
+4. Always produce a complete best-estimate answer -- never leave the result incomplete while waiting on clarification.
 
 HIDDEN CALORIES: Explicitly consider preparation words. "Fried" implies ~1-2 tbsp absorbed oil (100-250 kcal). "Buttered"/"sautéed" implies added fat. "Creamy"/"cheesy" implies more fat/calories than a plain version. Restaurant/takeout dishes and sauces/dressings/gravies typically contain more fat, sugar, and salt than a minimal home-cooked estimate. List anything probable but not explicitly stated in "hiddenCalories".
 
 SANITY CHECK before finalizing: Would this realistically satisfy an average adult for this meal? Is the total suspiciously low for what was described? Dense foods (pasta, rice, granola, nuts, cheese, fries, desserts, peanut butter) should never be underestimated. When uncertain between two plausible estimates, choose the larger one — underestimating is the more common and more harmful error.
 
+UNCERTAINTY RANGE: Provide a plausible minCalories/maxCalories range for the total (and optionally per item) -- narrow if quantities were explicit, wide if serving sizes were guessed or the description was vague. The best estimate is your most probable value, not the midpoint.
+
+CLARIFYING QUESTION (optional, at most one): If one specific missing detail would materially change the total (e.g. "was the chicken fried or grilled?", "what kind of dressing?", "did the smoothie have protein powder?"), set "clarifyingQuestion" to that one short question. Otherwise set it to null. Still always return a complete best-estimate result even when asking.
+
 Return this exact JSON structure:
 {
   "mealName": "",
-  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0 }],
+  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "minCalories": 0, "maxCalories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0, "assumptions": [""] }],
   "hiddenCalories": [""],
   "totalCalories": 0,
+  "minCalories": 0,
+  "maxCalories": 0,
   "totalProteinG": 0,
   "totalCarbsG": 0,
   "totalFatG": 0,
   "confidenceScore": 0.0,
+  "uncertaintyDrivers": [""],
+  "clarifyingQuestion": null,
   "notes": ""
 }
 
@@ -466,6 +500,8 @@ IMPORTANT RULES:
 - notes field: briefly state any assumptions made about unspecified quantities and hidden-calorie reasoning (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large fried eggs; added ~1 tbsp oil for frying")
 - confidenceScore: 0.80-0.95 if quantities were explicit, 0.55-0.79 if serving sizes were assumed, below 0.55 if the description was vague
 - hiddenCalories: empty array if genuinely none likely
+- uncertaintyDrivers: short list of what's driving the min/max spread -- empty array if confidence is very high
+- assumptions (per item): 1-2 short phrases for anything assumed about that specific item
 - NEVER invent a specific brand, restaurant, or product name that the user did not mention. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") unless a brand/restaurant is explicitly named in the description or provided in "MATCHED DATABASE PRODUCTS" below. Do not name a specific commercial product (e.g. a canned pasta brand) for a home-style dish just because it is a well-known association -- a plain "bowl of spaghetti" is fresh-cooked pasta, not a specific canned product.
 - BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
       },
@@ -482,14 +518,18 @@ IMPORTANT RULES:
 function getMockMealTextAnalysis(description: string): MealPhotoAnalysis {
   return {
     items: [
-      { name: 'Scrambled Eggs', estimatedServingSize: '1 large egg', quantity: 4, calories: 90, proteinG: 6.3, carbsG: 0.6, fatG: 6.5, fiberG: 0, sugarG: 0.4, sodiumMg: 88, cholesterolMg: 164, saturatedFatG: 1.6, potassiumMg: 67, vitaminDMcg: 1.0, calciumMg: 25, ironMg: 0.8 },
-      { name: 'Plain Bagel', estimatedServingSize: '1 medium bagel (90g)', quantity: 1, calories: 245, proteinG: 9.4, carbsG: 48, fatG: 1.4, fiberG: 2, sugarG: 5, sodiumMg: 430, cholesterolMg: 0, saturatedFatG: 0.2, potassiumMg: 100, vitaminDMcg: 0, calciumMg: 20, ironMg: 3 },
+      { name: 'Scrambled Eggs', estimatedServingSize: '1 large egg', quantity: 4, calories: 90, minCalories: 80, maxCalories: 100, proteinG: 6.3, carbsG: 0.6, fatG: 6.5, fiberG: 0, sugarG: 0.4, sodiumMg: 88, cholesterolMg: 164, saturatedFatG: 1.6, potassiumMg: 67, vitaminDMcg: 1.0, calciumMg: 25, ironMg: 0.8, assumptions: ['Assumed no added butter/oil'] },
+      { name: 'Plain Bagel', estimatedServingSize: '1 medium bagel (90g)', quantity: 1, calories: 245, minCalories: 220, maxCalories: 280, proteinG: 9.4, carbsG: 48, fatG: 1.4, fiberG: 2, sugarG: 5, sodiumMg: 430, cholesterolMg: 0, saturatedFatG: 0.2, potassiumMg: 100, vitaminDMcg: 0, calciumMg: 20, ironMg: 3, assumptions: ['Assumed medium size, plain (no cream cheese/butter)'] },
     ],
     totalCalories: 605,
+    minCalories: 545,
+    maxCalories: 690,
     totalProteinG: 34.6,
     totalCarbsG: 50.4,
     totalFatG: 27.4,
     confidenceScore: 0.55,
+    uncertaintyDrivers: ['Egg cooking fat not specified', 'Bagel size assumed as medium'],
+    clarifyingQuestion: null,
     notes: `Mock analysis for: "${description}" -- add an OpenAI API key for real text-based estimation.`,
   };
 }
@@ -497,17 +537,52 @@ function getMockMealTextAnalysis(description: string): MealPhotoAnalysis {
 function getMockMealPhotoAnalysis(): MealPhotoAnalysis {
  return {
    items: [
-     { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', quantity: 1, calories: 248, proteinG: 46, carbsG: 0, fatG: 5.4, fiberG: 0, sugarG: 0, sodiumMg: 74, cholesterolMg: 125, saturatedFatG: 1.5, potassiumMg: 440, vitaminDMcg: 0.1, calciumMg: 15, ironMg: 1.1 },
-     { name: 'Brown Rice', estimatedServingSize: '1 cup', quantity: 1, calories: 216, proteinG: 5, carbsG: 45, fatG: 1.8, fiberG: 3.5, sugarG: 0.7, sodiumMg: 10, cholesterolMg: 0, saturatedFatG: 0.4, potassiumMg: 154, vitaminDMcg: 0, calciumMg: 20, ironMg: 1.0 },
-     { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', quantity: 1, calories: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6, fiberG: 5.1, sugarG: 2.6, sodiumMg: 64, cholesterolMg: 0, saturatedFatG: 0.1, potassiumMg: 457, vitaminDMcg: 0, calciumMg: 62, ironMg: 1.1 },
+     { name: 'Grilled Chicken Breast', estimatedServingSize: '150g', quantity: 1, calories: 248, minCalories: 220, maxCalories: 285, proteinG: 46, carbsG: 0, fatG: 5.4, fiberG: 0, sugarG: 0, sodiumMg: 74, cholesterolMg: 125, saturatedFatG: 1.5, potassiumMg: 440, vitaminDMcg: 0.1, calciumMg: 15, ironMg: 1.1, assumptions: ['Assumed grilled, minimal added oil'] },
+     { name: 'Brown Rice', estimatedServingSize: '1 cup', quantity: 1, calories: 216, minCalories: 190, maxCalories: 245, proteinG: 5, carbsG: 45, fatG: 1.8, fiberG: 3.5, sugarG: 0.7, sodiumMg: 10, cholesterolMg: 0, saturatedFatG: 0.4, potassiumMg: 154, vitaminDMcg: 0, calciumMg: 20, ironMg: 1.0, assumptions: ['Estimated 1 cup cooked from plate coverage'] },
+     { name: 'Steamed Broccoli', estimatedServingSize: '1 cup', quantity: 1, calories: 55, minCalories: 45, maxCalories: 70, proteinG: 3.7, carbsG: 11, fatG: 0.6, fiberG: 5.1, sugarG: 2.6, sodiumMg: 64, cholesterolMg: 0, saturatedFatG: 0.1, potassiumMg: 457, vitaminDMcg: 0, calciumMg: 62, ironMg: 1.1, assumptions: ['Assumed no added butter'] },
    ],
    totalCalories: 519,
+   minCalories: 455,
+   maxCalories: 600,
    totalProteinG: 54.7,
    totalCarbsG: 56,
    totalFatG: 7.8,
    confidenceScore: 0.72,
+   uncertaintyDrivers: ['Rice portion depth on plate approximated', 'Any added oil/butter not clearly visible'],
+   clarifyingQuestion: null,
    notes: 'Mock analysis — add an OpenAI API key for real photo analysis.',
  };
+}
+
+// ── Deterministic server-side validation (not model-provided) ────────────────
+
+/**
+ * Cross-checks the model's own numbers rather than trusting them blindly:
+ *  1. Do the item totals actually sum to the reported meal total?
+ *  2. Is the reported calorie total roughly consistent with protein*4 + carbs*4 + fat*9
+ *     (allowing headroom for fiber/sugar-alcohol/rounding/label conventions)?
+ * Returns human-readable warnings to surface to the user -- an empty array means
+ * both checks passed within tolerance.
+ */
+export function validateMealAnalysis(analysis: MealPhotoAnalysis): string[] {
+  const warnings: string[] = [];
+  if (!analysis.items || analysis.items.length === 0) return warnings;
+
+  const summedCalories = analysis.items.reduce((s, i) => s + i.calories * i.quantity, 0);
+  if (analysis.totalCalories > 0 && Math.abs(summedCalories - analysis.totalCalories) / analysis.totalCalories > 0.05) {
+    warnings.push(
+      `Item calories sum to ${Math.round(summedCalories)}, which doesn't match the reported total of ${Math.round(analysis.totalCalories)}.`,
+    );
+  }
+
+  const macroCalories = analysis.totalProteinG * 4 + analysis.totalCarbsG * 4 + analysis.totalFatG * 9;
+  if (analysis.totalCalories > 0 && Math.abs(macroCalories - analysis.totalCalories) / analysis.totalCalories > 0.2) {
+    warnings.push(
+      `Macro-derived calories (${Math.round(macroCalories)}) differ notably from the reported total (${Math.round(analysis.totalCalories)}) -- treat this estimate with extra caution.`,
+    );
+  }
+
+  return warnings;
 }
 
 // ── generateBloodworkSummary ──────────────────────────────────────────────────
