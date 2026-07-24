@@ -430,7 +430,7 @@ export async function analyzeMealText(
   const userText = `The user describes what they ate: "${description}". Estimate calories and macros for each food item and return the JSON.${referenceBlock}`;
 
   const response = await client.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     messages: [
       {
         role: 'system',

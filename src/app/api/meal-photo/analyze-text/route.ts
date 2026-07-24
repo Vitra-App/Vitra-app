@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { analyzeMealText } from '@/lib/ai-service';
-import { groundAnalysisInDatabase, extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
+import { extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -45,7 +45,6 @@ async function findReferenceFoods(description: string) {
   return results;
 }
 
-
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -65,15 +64,25 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Please describe what you ate.' }, { status: 400 });
 
   const { description } = parsed.data;
+  // Reference foods are only injected as extra CONTEXT for the model when the
+  // user explicitly names a real brand/product -- GPT still decides the final
+  // numbers itself, this just gives it accurate ground-truth to reason from.
   const referenceFoods = await findReferenceFoods(description);
   try {
     const raw = await analyzeMealText(description, referenceFoods);
     // Safety net: strip any brand name the model invented on its own that the
     // user never actually mentioned (prompt instructions alone did not
     // reliably stop this -- see stripUnmentionedBrandNames for detail).
+    //
+    // Intentionally NOT running groundAnalysisInDatabase here. Fuzzy-matching
+    // the AI's item names against our own product database and silently
+    // overwriting its calorie/macro numbers after the fact was producing
+    // worse, less accurate results than trusting GPT's own estimate directly
+    // (wrong product matched, wrong serving size/grams assumed, etc). Text
+    // scan results are now the model's own numbers end-to-end, only cleaned
+    // of any hallucinated brand name the user never actually typed.
     const cleaned = await stripUnmentionedBrandNames(raw, description);
-    const result = await groundAnalysisInDatabase(cleaned);
-    return NextResponse.json(result);
+    return NextResponse.json(cleaned);
   } catch (err) {
     console.error('[meal-photo/analyze-text] AI analysis failed:', err);
     return NextResponse.json(
