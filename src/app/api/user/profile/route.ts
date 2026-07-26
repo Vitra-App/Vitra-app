@@ -20,6 +20,7 @@ const schema = z.object({
   carbTargetG: z.number().nullable().optional(),
   fatTargetG: z.number().nullable().optional(),
   dietaryPrefs: z.array(z.string()).optional(),
+  healthConditions: z.string().max(2000).nullable().optional(),
 });
 
 export async function PUT(req: NextRequest) {

@@ -82,6 +82,7 @@ model UserProfile {
   weeklyWeightChangeKg Float? // target weekly change; negative = lose, positive = gain, null/0 = maintain
   activityLevel        String? // "sedentary" | "lightly_active" | "moderately_active" | "very_active" | "extra_active"
   dietaryPrefs         String[] // e.g. ["vegetarian", "gluten_free"]
+  healthConditions     String? // free-text pre-existing conditions/medications, used to tailor AI bloodwork insights
   caloricTarget        Int?
   proteinTargetG       Float?
   carbTargetG          Float?

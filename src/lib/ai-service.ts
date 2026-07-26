@@ -588,7 +588,7 @@ export function validateMealAnalysis(analysis: MealPhotoAnalysis): string[] {
 // ── generateBloodworkSummary ──────────────────────────────────────────────────
 
 export async function generateBloodworkSummary(
- profile: Pick<UserProfile, 'sex' | 'goal'> | null,
+ profile: Pick<UserProfile, 'sex' | 'goal' | 'healthConditions'> | null,
  markers: BloodworkMarker[],
 ): Promise<string> {
  const disclaimer =
@@ -604,6 +604,9 @@ export async function generateBloodworkSummary(
 
  const system = `You are a health-education assistant providing general, educational commentary on bloodwork values.
 NEVER diagnose disease, NEVER recommend specific medications, and ALWAYS remind users to consult their healthcare provider.
+The user may share pre-existing health conditions or medications for context -- use this ONLY to make your educational
+observations more relevant (e.g. noting a marker is commonly monitored for a condition they mentioned), and NEVER use it
+to diagnose, confirm, rule out, or suggest treatment for any condition.
 Use hedging language: "may", "could", "consider discussing with your clinician".
 Keep the response under 300 words. Start with the disclaimer provided by the system.`;
 
@@ -617,7 +620,11 @@ Keep the response under 300 words. Start with the disclaimer provided by the sys
    )
    .join('\n');
 
- const user = `User sex: ${profile?.sex ?? 'not specified'}\nGoal: ${profile?.goal ?? 'not specified'}\n\nMarkers:\n${markerList}\n\nProvide plain-English educational observations about these values and any general nutrition or lifestyle considerations.`;
+ const conditionsLine = profile?.healthConditions?.trim()
+   ? `Pre-existing conditions / medications (user-reported): ${profile.healthConditions.trim()}`
+   : 'Pre-existing conditions / medications: none reported';
+
+ const user = `User sex: ${profile?.sex ?? 'not specified'}\nGoal: ${profile?.goal ?? 'not specified'}\n${conditionsLine}\n\nMarkers:\n${markerList}\n\nProvide plain-English educational observations about these values and any general nutrition or lifestyle considerations.`;
 
  const response = await callOpenAI(system, user);
  return `${disclaimer}\n\n${response}`;
