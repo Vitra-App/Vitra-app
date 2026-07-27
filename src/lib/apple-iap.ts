@@ -93,7 +93,7 @@ export async function verifySignedTransaction(jws: string): Promise<VerifiedTran
 /** Product IDs configured in App Store Connect — must match `StoreKitService.swift`. */
 export const IAP_PRODUCT_IDS = {
   proMonthly: 'com.vitra.pro.monthly',
-  proYearly: 'com.vitra.pro.yearly',
+  proYearly: 'com.vitra.pro.annual',
 } as const;
 
 export function isProProductId(productId: string): boolean {
