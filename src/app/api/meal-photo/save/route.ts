@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
     create: { userId, date: dayBucket, ...totals },
   });
 
-  revalidateTag(dailyTag(userId, dateStr));
+  revalidateTag(dailyTag(userId, dateStr), { expire: 0 });
 
   return NextResponse.json(meal, { status: 201 });
 }

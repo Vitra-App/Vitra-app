@@ -5,7 +5,7 @@ let _stripe: Stripe | null = null;
 export function getStripe(): Stripe | null {
   if (!process.env.STRIPE_SECRET_KEY) return null;
   if (!_stripe) {
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-04-22.dahlia' });
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-06-24.dahlia' });
   }
   return _stripe;
 }

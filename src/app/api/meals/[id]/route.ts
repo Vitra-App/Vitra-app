@@ -132,7 +132,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   });
 
   const dateStr = mealDay.toISOString().slice(0, 10);
-  revalidateTag(dailyTag(meal.userId, dateStr));
+  revalidateTag(dailyTag(meal.userId, dateStr), { expire: 0 });
 
   const updated = await prisma.meal.findUnique({
     where: { id },
@@ -171,7 +171,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   });
 
   const dateStr = mealDay.toISOString().slice(0, 10);
-  revalidateTag(dailyTag(meal.userId, dateStr));
+  revalidateTag(dailyTag(meal.userId, dateStr), { expire: 0 });
 
   return NextResponse.json({ ok: true });
 }

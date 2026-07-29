@@ -113,8 +113,8 @@ export async function PUT(req: NextRequest) {
     create: { userId, ...finalData },
   });
 
-  revalidateTag(profileTag(userId));
-  revalidateTag(`user-${userId}`);
+  revalidateTag(profileTag(userId), { expire: 0 });
+  revalidateTag(`user-${userId}`, { expire: 0 });
 
   return NextResponse.json(profile);
 }

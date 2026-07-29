@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
   });
 
   const dateStr = dayStart.toISOString().slice(0, 10);
-  revalidateTag(dailyTag(userId, dateStr));
+  revalidateTag(dailyTag(userId, dateStr), { expire: 0 });
 
   return NextResponse.json(meal, { status: 201 });
 }
