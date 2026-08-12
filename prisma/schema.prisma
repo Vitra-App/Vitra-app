@@ -16,6 +16,12 @@ model User {
   emailVerified DateTime?
   image         String?
   passwordHash  String?
+  /// True for anonymous accounts created via "Continue without an account" (Apple Guideline
+  /// 5.1.1 — users must be able to use the app and buy non-account-based IAP without providing
+  /// personal info). Guest users get a synthetic private email and no password; they can later
+  /// optionally "upgrade" the same user row to a real account via /api/auth/link-guest-account
+  /// without losing any data, to sync across devices.
+  isGuest       Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
