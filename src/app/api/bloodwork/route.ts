@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  revalidateTag(bloodworkTag(session.user.id));
+  revalidateTag(bloodworkTag(session.user.id), { expire: 0 });
 
   return NextResponse.json(marker, { status: 201 });
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 const COMMON_FOODS = [
   { name: 'Ribeye Steak', servingSize: '225g (8oz)', servingWeightG: 225, calories: 540, proteinG: 48, carbsG: 0, fatG: 38, sodiumMg: 110 },
@@ -53,8 +54,16 @@ const COMMON_FOODS = [
 ];
 
 export async function POST(req: NextRequest) {
+  // Rate-limit brute-force attempts against the admin secret.
+  const ip = getClientIp(req);
+  const limit = rateLimit(`admin-seed:${ip}`, 5, 60 * 60 * 1000);
+  if (!limit.ok) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
+  const expectedSecret = process.env.ADMIN_SEED_SECRET;
   const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== 'vitra-seed-2026') {
+  if (!expectedSecret || !secret || secret !== expectedSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

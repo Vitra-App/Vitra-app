@@ -9,7 +9,7 @@ import { authConfig } from './auth.config';
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(6).max(200),
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -33,25 +33,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         try {
-          console.log('[authorize] credentials received:', { email: credentials?.email, passwordLen: (credentials?.password as string)?.length, passwordType: typeof credentials?.password });
           const parsed = loginSchema.safeParse(credentials);
           if (!parsed.success) {
-            console.log('[authorize] zod failed:', JSON.stringify(parsed.error.issues));
             return null;
           }
 
           const { email, password } = parsed.data;
           const user = await prisma.user.findUnique({ where: { email } });
-          console.log('[authorize] user:', !!user, 'hash:', !!user?.passwordHash);
           if (!user || !user.passwordHash) return null;
 
           const valid = await bcrypt.compare(password, user.passwordHash);
-          console.log('[authorize] bcrypt:', valid, 'pw:', JSON.stringify(password));
           if (!valid) return null;
 
           // Require verified email before allowing sign-in
           if (!user.emailVerified) {
-            console.log('[authorize] blocked — email not verified');
             return null;
           }
 

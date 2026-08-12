@@ -11,7 +11,7 @@ export async function POST() {
 
   const [markers, profile] = await Promise.all([
     prisma.bloodworkMarker.findMany({ where: { userId }, orderBy: { markerName: 'asc' } }),
-    prisma.userProfile.findUnique({ where: { userId }, select: { sex: true, goal: true } }),
+    prisma.userProfile.findUnique({ where: { userId }, select: { sex: true, goal: true, healthConditions: true } }),
   ]);
 
   const content = await generateBloodworkSummary(profile, markers);

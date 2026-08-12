@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { analyzeMealText } from '@/lib/ai-service';
-import { groundAnalysisInDatabase, extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
+import { analyzeMealText, validateMealAnalysis } from '@/lib/ai-service';
+import { extractBrandPhrases, stripUnmentionedBrandNames } from '@/lib/food-grounding';
 import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -15,13 +15,10 @@ const schema = z.object({
  * "Bell & Evans chicken") so the AI can use real database nutrition values.
  *
  * Only matches genuine 2-3 word brand-like phrases against the `brand` column
- * -- NOT single generic words against `name`. Matching single words like
- * "meatballs" or "spaghetti" against product names previously caused the AI to
- * be told "the user named this exact brand" for things they never mentioned
- * (e.g. a plain "3 meatballs" got silently treated as "Hip Chick Farms Baked
- * Chicken Meatballs" because that unrelated product's name happened to contain
- * the word "meatballs"). A real brand name is always 2+ words, so requiring
- * that eliminates this entire class of false-positive brand injection.
+ * -- NOT single generic words against `name`. A real brand name is always 2+
+ * words, so requiring that eliminates false-positive brand injection (e.g. a
+ * plain "3 meatballs" getting matched to an unrelated branded product just
+ * because its name happens to contain the word "meatballs").
  */
 async function findReferenceFoods(description: string) {
   const cleaned = description.replace(/[^\p{L}\p{N}&'\s-]/gu, ' ').trim();
@@ -45,7 +42,6 @@ async function findReferenceFoods(description: string) {
   return results;
 }
 
-
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -65,15 +61,26 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Please describe what you ate.' }, { status: 400 });
 
   const { description } = parsed.data;
+  // Reference foods are only injected as extra CONTEXT for the model when the
+  // user explicitly names a real brand/product -- GPT still decides the final
+  // numbers itself, this just gives it accurate ground-truth to reason from.
   const referenceFoods = await findReferenceFoods(description);
   try {
     const raw = await analyzeMealText(description, referenceFoods);
     // Safety net: strip any brand name the model invented on its own that the
     // user never actually mentioned (prompt instructions alone did not
     // reliably stop this -- see stripUnmentionedBrandNames for detail).
+    //
+    // Intentionally NOT running groundAnalysisInDatabase here. Fuzzy-matching
+    // the AI's item names against our own product database and silently
+    // overwriting its calorie/macro numbers after the fact was producing
+    // worse, less accurate results than trusting GPT's own estimate directly
+    // (wrong product matched, wrong serving size/grams assumed, etc). Text
+    // scan results are now the model's own numbers end-to-end, only cleaned
+    // of any hallucinated brand name the user never actually typed.
     const cleaned = await stripUnmentionedBrandNames(raw, description);
-    const result = await groundAnalysisInDatabase(cleaned);
-    return NextResponse.json(result);
+    cleaned.validationWarnings = validateMealAnalysis(cleaned);
+    return NextResponse.json(cleaned);
   } catch (err) {
     console.error('[meal-photo/analyze-text] AI analysis failed:', err);
     return NextResponse.json(

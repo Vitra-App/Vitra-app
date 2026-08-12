@@ -13,8 +13,10 @@ export const authConfig = {
   },
   callbacks: {
     authorized({ auth, request }) {
-      // Allow admin/public API routes without auth
       const pathname = request.nextUrl.pathname;
+      // /api/admin/* routes bypass session-based auth here because they enforce
+      // their own secret-based check (see ADMIN_SEED_SECRET in seed-foods/route.ts).
+      // Do NOT add new /api/admin routes without an equivalent explicit auth check.
       if (pathname.startsWith('/api/admin')) return true;
       return !!auth?.user;
     },
