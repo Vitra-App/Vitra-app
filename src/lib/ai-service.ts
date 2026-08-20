@@ -297,86 +297,40 @@ function generateMockWeeklySummary(
  return lines.join('\n');
 }
 
-// ── analyzeMealPhoto ──────────────────────────────────────────────────────────
+// ── Model selection & escalation ──────────────────────────────────────────────
+//
+// GPT-5.6 Luna handles the vast majority of meal scans by default. Its own
+// built-in reasoning does the portion/calorie/macro estimation -- we no longer
+// hand-roll a step-by-step chain-of-thought framework or manual "undercounting
+// correction" bias in the prompt; the model is trusted to do that itself.
+// Any scan Luna itself flags as low-confidence or ambiguous (via confidenceScore
+// or clarifyingQuestion) is automatically re-run once on GPT-5.6 Terra, a more
+// capable/expensive model reserved for exactly these harder cases.
 
-export async function analyzeMealPhoto(
-  base64Image: string,
-  mimeType: string = 'image/jpeg',
-  description?: string,
-  referenceFoods?: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }>,
-): Promise<MealPhotoAnalysis> {
-  if (!hasOpenAIKey()) {
-    return getMockMealPhotoAnalysis();
-  }
+const MODEL_STANDARD = 'gpt-5.6-luna';
+const MODEL_ESCALATED = 'gpt-5.6-terra';
+const ESCALATION_CONFIDENCE_THRESHOLD = 0.75;
 
-  const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
+function needsEscalation(analysis: MealPhotoAnalysis): boolean {
+  return analysis.confidenceScore < ESCALATION_CONFIDENCE_THRESHOLD || Boolean(analysis.clarifyingQuestion);
+}
 
-  // Build a reference-products block so the AI uses REAL database values for
-  // any brand/product the user named (e.g. "Bell & Evans chicken").
-  let referenceBlock = '';
-  if (referenceFoods && referenceFoods.length > 0) {
-    const lines = referenceFoods.slice(0, 8).map((f) => {
-      const label = f.brand ? `${f.brand} ${f.name}` : f.name;
-      return `- ${label} (per ${f.servingSize}): ${Math.round(f.calories)} kcal, ${f.proteinG}g protein, ${f.carbsG}g carbs, ${f.fatG}g fat` +
-        (f.fiberG != null ? `, ${f.fiberG}g fiber` : '') +
-        (f.sugarG != null ? `, ${f.sugarG}g sugar` : '') +
-        (f.sodiumMg != null ? `, ${Math.round(f.sodiumMg)}mg sodium` : '');
-    });
-    referenceBlock = `\n\nMATCHED DATABASE PRODUCTS (the user named a brand/product — use THESE exact nutrition values, scaled to the visible portion, instead of generic estimates):\n${lines.join('\n')}`;
-  }
+function buildReferenceBlock(
+  referenceFoods: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }> | undefined,
+  portionPhrase: string,
+): string {
+  if (!referenceFoods || referenceFoods.length === 0) return '';
+  const lines = referenceFoods.slice(0, 8).map((f) => {
+    const label = f.brand ? `${f.brand} ${f.name}` : f.name;
+    return `- ${label} (per ${f.servingSize}): ${Math.round(f.calories)} kcal, ${f.proteinG}g protein, ${f.carbsG}g carbs, ${f.fatG}g fat` +
+      (f.fiberG != null ? `, ${f.fiberG}g fiber` : '') +
+      (f.sugarG != null ? `, ${f.sugarG}g sugar` : '') +
+      (f.sodiumMg != null ? `, ${Math.round(f.sodiumMg)}mg sodium` : '');
+  });
+  return `\n\nMATCHED DATABASE PRODUCTS (the user named a brand/product -- use THESE exact nutrition values, scaled to the ${portionPhrase}, instead of generic estimates):\n${lines.join('\n')}`;
+}
 
-  const userText = (description
-    ? `The user says: "${description}". Analyse this meal and return the JSON.`
-    : 'Analyse this meal and return the JSON.') + referenceBlock;
-
- const response = await client.chat.completions.create({
-   model: 'gpt-4o',
-   messages: [
-     {
-       role: 'system',
-       content: `Your primary objective is ACCURACY, not optimism. You are a precise nutrition analyst estimating calories, macros, serving size, and ingredients from a meal photo with the rigor of a registered dietitian.
-
-GENERAL PRINCIPLES
-- Never intentionally underestimate calories.
-- If uncertain, prefer a realistic higher estimate rather than an unrealistically low one.
-- Estimate portions BEFORE estimating nutrition.
-- Reason through the steps below internally before producing the final answer.
-- If confidence is low, say so in the notes.
-- Never invent ingredients that cannot reasonably be inferred from the image or description.
-
-STEP 1 — IMAGE QUALITY
-Silently assess: Is the entire meal visible? Is any food hidden/occluded? Is lighting poor? Is the plate cropped? Is there motion blur? If quality is poor, lower confidenceScore accordingly and say why in notes.
-
-STEP 2 — IDENTIFY FOOD
-Identify every visibly distinct item SEPARATELY. Do not merge foods together (e.g. list "grilled chicken", "mashed potatoes", "butter", "gravy", "broccoli" as separate items rather than one combined "chicken dinner" item).
-
-STEP 3 — ESTIMATE CONTAINER SIZE
-Determine the plate diameter (6/8/9/10/11/12 inch, or charger plate) OR bowl size (small cereal, medium soup, large pasta, deep serving bowl). Estimate approximate volume, fill percentage, and depth. This is your anchor for all portion math. Also look for other reference objects (fork ~19cm, hand, can 355ml, phone) to calibrate.
-
-STEP 4 — ESTIMATE PORTIONS
-For EVERY food item, estimate weight in grams (and volume/cups/tbsp where natural, e.g. rice in cups, oil in tbsp). Derive this from the container-size anchor in Step 3 — do NOT default to "1 cup" or "1 serving" without reasoning about the actual visible quantity.
-
-STEP 5 — LOOK FOR HIDDEN CALORIES
-Explicitly consider whether each of these is likely present even if not clearly visible: cooking oil, butter, cream, sauces, cheese, added sugar, dressings, nuts, seeds, heavy cream, breading, batter. A glossy/shiny surface = oil or butter was used. Restaurant/fried/creamy food uses MORE fat, oil, sugar and salt than a home-cooked guess would suggest — bias toward the higher end of the plausible range. If hidden calories are probable but not clearly visible, list them in "hiddenCalories" rather than ignoring them.
-
-STEP 6 — CALORIE ESTIMATION
-Estimate calories, protein, carbs, fat, fiber, sugar, and sodium for each item using realistic USDA-standard values for the exact weight estimated in Step 4. Then sum everything into the totals.
-
-STEP 7 — SANITY CHECK (perform before finalizing)
-Ask yourself: Does this amount of food physically fit on the estimated plate/bowl? Would this satisfy an average adult? Is the total suspiciously low for the visible portion size? Would a restaurant portion typically be larger? Dense foods (pasta, rice, mashed potatoes, granola, peanut butter, nuts, cheese, fries, desserts) compress visually and are almost always MORE than they appear — never underestimate these. Foods photographed close to the camera often appear smaller than they actually are. Do not assume lean cooking methods — if grilling/frying/sautéing/roasting is likely, include realistic cooking fats. If multiple portion sizes are plausible, choose the most probable, not the smallest. If the total still seems low relative to the portion, revise upward before answering.
-
-STEP 8 — CONFIDENCE
-confidenceScore: 0.95–1.0 very confident (container + all items clearly visible), 0.80–0.94 good estimate (container visible, minor occlusion), 0.60–0.79 moderate uncertainty (partial visibility or no reference objects), below 0.60 recommend the user retake the photo (state this in notes).
-
-STEP 9 — UNCERTAINTY RANGE
-For the meal total, and optionally per item, estimate a plausible minCalories and maxCalories range around your best-estimate calories -- NOT a generic +/-10%. Base the width of the range on actual uncertainty: narrow for a clearly visible packaged item with a label, wide for a deep bowl, mixed dish, restaurant food, or partially occluded plate. The best estimate (calories/totalCalories) should be your single most probable value, not automatically the midpoint of the range.
-
-STEP 10 — CLARIFYING QUESTION (optional, at most one)
-If -- and only if -- one specific piece of missing information would materially change the total (e.g. dressing type/amount on a salad, whether chicken was fried vs grilled, whether there's pasta hidden under sauce), set "clarifyingQuestion" to ONE short, specific question. Otherwise set it to null. Always still provide a complete best-estimate answer even when asking -- the question refines a future re-scan, it never blocks this result.
-
-Return this exact JSON structure:
-{
+const PHOTO_JSON_SCHEMA = `{
  "mealName": "",
  "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "minCalories": 0, "maxCalories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0, "assumptions": [""] }],
  "plateEstimate": { "type": "", "diameterInches": 0, "fillPercent": 0, "estimatedVolumeMl": 0 },
@@ -391,93 +345,22 @@ Return this exact JSON structure:
  "uncertaintyDrivers": [""],
  "clarifyingQuestion": null,
  "notes": ""
-}
+}`;
 
-IMPORTANT RULES:
-- estimatedServingSize must be a weight (e.g. "180g") or volume (e.g. "350ml") — NOT "1 serving"
-- Group identical items: 3 chicken strips = one item with quantity=3, calories/macros for ONE strip
-- All macro fields = values for ONE unit of estimatedServingSize
-- notes field: summarize your container/portion/hidden-calorie reasoning and state confidence explicitly (e.g. "Standard 10in plate, ~70% full. Chicken ~190g (visible density + shrinkage), rice ~2.2 cups compressed, added ~1.5 tbsp oil for sauté. Confidence: good estimate.")
-- hiddenCalories: list plain-language items like "Possible hidden calories: cooking oil in stir-fry", "Possible butter on toast" — empty array if genuinely none likely
-- uncertaintyDrivers: short plain-language list of what's actually driving the min/max spread (e.g. "Amount of dressing on salad not visible", "Rice depth in deep bowl uncertain") -- empty array only if confidence is very high
-- assumptions (per item): 1-2 short phrases for anything you had to assume for that specific item (e.g. "assumed grilled not fried", "assumed 1 tbsp oil")
-- NEVER invent a specific brand, restaurant, or product name that isn't visually evident (e.g. a logo/packaging in the photo) or provided in "MATCHED DATABASE PRODUCTS" below. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") for anything home-style or unbranded -- do not name a specific commercial product just because it's a well-known association for that food.
-- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the visible portion) rather than generic estimates, and put the brand in the item name (e.g. "Bell & Evans Chicken Breast"). Raise confidenceScore to 0.9 for those items.
-
-CRITICAL — AVOID SYSTEMATIC UNDERCOUNTING (vision models consistently underestimate calories; correct for this):
-- Do not round estimates down "to be safe" — dietitians calibrate to realistic values, which are usually higher than a first visual instinct suggests, especially for meats (cooked shrinkage means visible portions are denser than they look), cheese, nuts, oils, and dressed salads.
-- Combination dishes (stir-fries, casseroles, pasta bakes, burritos) almost always contain more oil/fat/cheese mixed throughout than what's visible on the surface — estimate the full dish weight generously, not just the visible top layer.
-- When genuinely uncertain between two portion-size estimates, choose the larger one.`,
-      },
-      {
-        role: 'user',
-       content: [
-         {
-           type: 'image_url',
-           image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: 'high' },
-         },
-         { type: 'text', text: userText },
-       ],
-     },
-   ],
-   max_tokens: 1600,
-   response_format: { type: 'json_object' },
- });
-
- const raw = response.choices[0]?.message?.content ?? '{}';
- return JSON.parse(raw) as MealPhotoAnalysis;
-}
-
-// -- analyzeMealText (no image -- pure text description) ----------------------
-
-export async function analyzeMealText(
-  description: string,
-  referenceFoods?: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }>,
-): Promise<MealPhotoAnalysis> {
-  if (!hasOpenAIKey()) {
-    return getMockMealTextAnalysis(description);
-  }
-
-  const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
-
-  let referenceBlock = '';
-  if (referenceFoods && referenceFoods.length > 0) {
-    const lines = referenceFoods.slice(0, 8).map((f) => {
-      const label = f.brand ? `${f.brand} ${f.name}` : f.name;
-      return `- ${label} (per ${f.servingSize}): ${Math.round(f.calories)} kcal, ${f.proteinG}g protein, ${f.carbsG}g carbs, ${f.fatG}g fat` +
-        (f.fiberG != null ? `, ${f.fiberG}g fiber` : '') +
-        (f.sugarG != null ? `, ${f.sugarG}g sugar` : '') +
-        (f.sodiumMg != null ? `, ${Math.round(f.sodiumMg)}mg sodium` : '');
-    });
-    referenceBlock = `\n\nMATCHED DATABASE PRODUCTS (the user named a brand/product -- use THESE exact nutrition values, scaled to the described portion, instead of generic estimates):\n${lines.join('\n')}`;
-  }
-
-  const userText = `The user describes what they ate: "${description}". Estimate calories and macros for each food item and return the JSON.${referenceBlock}`;
-
-  const response = await client.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'system',
-        content: `Your primary objective is ACCURACY, not optimism. You are a precise nutrition analyst. Given a plain-text description of a meal (no photo), estimate calories and macros with the rigor of a registered dietitian, using realistic USDA-style portion sizes.
-
-PORTION ESTIMATION RULES:
-1. If the user gives a quantity (e.g. "4 scrambled eggs", "2 slices of bacon"), use that exact count.
-2. If no quantity is given for an item, assume ONE standard/typical serving (e.g. "a bagel" = 1 medium bagel ~90g, "rice" = 1 cup cooked) — but lean toward the larger end of "typical" (e.g. a restaurant/takeout item mentioned by name is usually bigger than a home-cooked default).
-3. Use realistic USDA nutrition database values for each food at that quantity/serving size.
-4. Always produce a complete best-estimate answer -- never leave the result incomplete while waiting on clarification.
-
-HIDDEN CALORIES: Explicitly consider preparation words. "Fried" implies ~1-2 tbsp absorbed oil (100-250 kcal). "Buttered"/"sautéed" implies added fat. "Creamy"/"cheesy" implies more fat/calories than a plain version. Restaurant/takeout dishes and sauces/dressings/gravies typically contain more fat, sugar, and salt than a minimal home-cooked estimate. List anything probable but not explicitly stated in "hiddenCalories".
-
-SANITY CHECK before finalizing: Would this realistically satisfy an average adult for this meal? Is the total suspiciously low for what was described? Dense foods (pasta, rice, granola, nuts, cheese, fries, desserts, peanut butter) should never be underestimated. When uncertain between two plausible estimates, choose the larger one — underestimating is the more common and more harmful error.
-
-UNCERTAINTY RANGE: Provide a plausible minCalories/maxCalories range for the total (and optionally per item) -- narrow if quantities were explicit, wide if serving sizes were guessed or the description was vague. The best estimate is your most probable value, not the midpoint.
-
-CLARIFYING QUESTION (optional, at most one): If one specific missing detail would materially change the total (e.g. "was the chicken fried or grilled?", "what kind of dressing?", "did the smoothie have protein powder?"), set "clarifyingQuestion" to that one short question. Otherwise set it to null. Still always return a complete best-estimate result even when asking.
+const PHOTO_SYSTEM_PROMPT = `You are a precise nutrition analyst. Analyze the meal photo and estimate calories, macros, serving sizes, and ingredients with the rigor of a registered dietitian. Identify every visibly distinct food item separately (don't merge them into one combined item), account for likely hidden ingredients (cooking oil, butter, sauces, dressings, cheese) even when not clearly visible, and give an honest confidenceScore plus a realistic minCalories/maxCalories uncertainty range rather than false precision.
 
 Return this exact JSON structure:
-{
+${PHOTO_JSON_SCHEMA}
+
+IMPORTANT RULES:
+- estimatedServingSize must be a weight (e.g. "180g") or volume (e.g. "350ml") -- NOT "1 serving"
+- Group identical items: 3 chicken strips = one item with quantity=3, calories/macros for ONE strip
+- All macro fields = values for ONE unit of estimatedServingSize
+- clarifyingQuestion: set to ONE short, specific question only if a single missing detail would materially change the total (e.g. dressing amount, fried vs grilled); otherwise null. Always return a complete best-estimate answer regardless.
+- NEVER invent a specific brand, restaurant, or product name that isn't visually evident or provided in "MATCHED DATABASE PRODUCTS" below. Use plain generic food names for anything home-style or unbranded.
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided, use those EXACT per-serving values (scaled to the visible portion) instead of generic estimates, and put the brand in the item name.`;
+
+const TEXT_JSON_SCHEMA = `{
   "mealName": "",
   "items": [{ "name": "", "estimatedServingSize": "", "quantity": 1, "calories": 0, "minCalories": 0, "maxCalories": 0, "proteinG": 0, "carbsG": 0, "fatG": 0, "fiberG": 0, "sugarG": 0, "sodiumMg": 0, "cholesterolMg": 0, "saturatedFatG": 0, "potassiumMg": 0, "vitaminDMcg": 0, "calciumMg": 0, "ironMg": 0, "assumptions": [""] }],
   "hiddenCalories": [""],
@@ -491,28 +374,106 @@ Return this exact JSON structure:
   "uncertaintyDrivers": [""],
   "clarifyingQuestion": null,
   "notes": ""
-}
+}`;
+
+const TEXT_SYSTEM_PROMPT = `You are a precise nutrition analyst. Given a plain-text description of a meal (no photo), estimate calories and macros with the rigor of a registered dietitian using realistic portion sizes. Use the user's stated quantities exactly when given; otherwise assume one standard serving. Account for likely hidden ingredients implied by preparation words (fried, buttered, creamy, etc.) even when not stated explicitly, and give an honest confidenceScore plus a realistic minCalories/maxCalories uncertainty range.
+
+Return this exact JSON structure:
+${TEXT_JSON_SCHEMA}
 
 IMPORTANT RULES:
-- estimatedServingSize must be a weight (e.g. "50g") or volume (e.g. "240ml"), or a clear unit count (e.g. "1 medium bagel") -- NOT "1 serving"
+- estimatedServingSize must be a weight, volume, or clear unit count (e.g. "1 medium bagel") -- NOT "1 serving"
 - Group identical items: "4 scrambled eggs" = one item with quantity=4, calories/macros for ONE egg
 - All macro fields = values for ONE unit of estimatedServingSize
-- notes field: briefly state any assumptions made about unspecified quantities and hidden-calorie reasoning (e.g. "Assumed 1 medium plain bagel (~90g) and 2 large fried eggs; added ~1 tbsp oil for frying")
-- confidenceScore: 0.80-0.95 if quantities were explicit, 0.55-0.79 if serving sizes were assumed, below 0.55 if the description was vague
-- hiddenCalories: empty array if genuinely none likely
-- uncertaintyDrivers: short list of what's driving the min/max spread -- empty array if confidence is very high
-- assumptions (per item): 1-2 short phrases for anything assumed about that specific item
-- NEVER invent a specific brand, restaurant, or product name that the user did not mention. Use plain generic food names (e.g. "Spaghetti", "Meatball", "Chicken Breast") unless a brand/restaurant is explicitly named in the description or provided in "MATCHED DATABASE PRODUCTS" below. Do not name a specific commercial product (e.g. a canned pasta brand) for a home-style dish just because it is a well-known association -- a plain "bowl of spaghetti" is fresh-cooked pasta, not a specific canned product.
-- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided below, the user named a specific brand/product. Use those EXACT per-serving nutrition values (scaled to the described portion) rather than generic estimates, and put the brand in the item name. Raise confidenceScore to 0.85 for those items.`,
+- clarifyingQuestion: set to ONE short question only if a single missing detail would materially change the total; otherwise null. Always return a complete best-estimate answer regardless.
+- NEVER invent a specific brand/restaurant/product the user didn't mention (or that isn't in "MATCHED DATABASE PRODUCTS" below). Use plain generic food names otherwise.
+- BRAND MATCHING: If "MATCHED DATABASE PRODUCTS" are provided, use those EXACT per-serving values (scaled to the described portion) instead of generic estimates, and put the brand in the item name.`;
+
+async function getOpenAIClient() {
+  const { default: OpenAI } = await import('openai');
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 55_000, maxRetries: 3, defaultHeaders: { 'Accept-Encoding': 'identity' } });
+}
+
+async function runPhotoAnalysis(model: string, base64Image: string, mimeType: string, userText: string): Promise<MealPhotoAnalysis> {
+  const client = await getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: PHOTO_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: 'high' } },
+          { type: 'text', text: userText },
+        ],
       },
+    ],
+    max_tokens: 1600,
+    response_format: { type: 'json_object' },
+  });
+  const raw = response.choices[0]?.message?.content ?? '{}';
+  return JSON.parse(raw) as MealPhotoAnalysis;
+}
+
+async function runTextAnalysis(model: string, userText: string): Promise<MealPhotoAnalysis> {
+  const client = await getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: TEXT_SYSTEM_PROMPT },
       { role: 'user', content: userText },
     ],
     max_tokens: 1000,
     response_format: { type: 'json_object' },
   });
-
   const raw = response.choices[0]?.message?.content ?? '{}';
   return JSON.parse(raw) as MealPhotoAnalysis;
+}
+
+// ── analyzeMealPhoto ──────────────────────────────────────────────────────────
+
+export async function analyzeMealPhoto(
+  base64Image: string,
+  mimeType: string = 'image/jpeg',
+  description?: string,
+  referenceFoods?: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }>,
+): Promise<MealPhotoAnalysis> {
+  if (!hasOpenAIKey()) {
+    return getMockMealPhotoAnalysis();
+  }
+
+  const referenceBlock = buildReferenceBlock(referenceFoods, 'visible portion');
+  const userText = (description
+    ? `The user says: "${description}". Analyse this meal and return the JSON.`
+    : 'Analyse this meal and return the JSON.') + referenceBlock;
+
+  let analysis = await runPhotoAnalysis(MODEL_STANDARD, base64Image, mimeType, userText);
+  if (needsEscalation(analysis)) {
+    console.log(`🔺 Escalating meal photo analysis from ${MODEL_STANDARD} to ${MODEL_ESCALATED} (confidence=${analysis.confidenceScore})`);
+    analysis = await runPhotoAnalysis(MODEL_ESCALATED, base64Image, mimeType, userText);
+  }
+  return analysis;
+}
+
+// -- analyzeMealText (no image -- pure text description) ----------------------
+
+export async function analyzeMealText(
+  description: string,
+  referenceFoods?: Array<{ name: string; brand: string | null; servingSize: string; calories: number; proteinG: number; carbsG: number; fatG: number; fiberG?: number | null; sugarG?: number | null; sodiumMg?: number | null }>,
+): Promise<MealPhotoAnalysis> {
+  if (!hasOpenAIKey()) {
+    return getMockMealTextAnalysis(description);
+  }
+
+  const referenceBlock = buildReferenceBlock(referenceFoods, 'described portion');
+  const userText = `The user describes what they ate: "${description}". Estimate calories and macros for each food item and return the JSON.${referenceBlock}`;
+
+  let analysis = await runTextAnalysis(MODEL_STANDARD, userText);
+  if (needsEscalation(analysis)) {
+    console.log(`🔺 Escalating meal text analysis from ${MODEL_STANDARD} to ${MODEL_ESCALATED} (confidence=${analysis.confidenceScore})`);
+    analysis = await runTextAnalysis(MODEL_ESCALATED, userText);
+  }
+  return analysis;
 }
 
 function getMockMealTextAnalysis(description: string): MealPhotoAnalysis {
