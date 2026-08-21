@@ -408,7 +408,7 @@ async function runPhotoAnalysis(model: string, base64Image: string, mimeType: st
         ],
       },
     ],
-    max_tokens: 1600,
+    max_completion_tokens: 1600,
     response_format: { type: 'json_object' },
   });
   const raw = response.choices[0]?.message?.content ?? '{}';
@@ -423,7 +423,7 @@ async function runTextAnalysis(model: string, userText: string): Promise<MealPho
       { role: 'system', content: TEXT_SYSTEM_PROMPT },
       { role: 'user', content: userText },
     ],
-    max_tokens: 1000,
+    max_completion_tokens: 1000,
     response_format: { type: 'json_object' },
   });
   const raw = response.choices[0]?.message?.content ?? '{}';
