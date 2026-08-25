@@ -18,7 +18,7 @@ function getVerifier(environment: Environment): SignedDataVerifier {
   if (environment === Environment.PRODUCTION) {
     if (!productionVerifier) {
       productionVerifier = new SignedDataVerifier(
-        [rootCert], false, Environment.PRODUCTION, BUNDLE_ID
+        [rootCert], false, Environment.PRODUCTION, BUNDLE_ID, APP_APPLE_ID
       );
     }
     return productionVerifier;
