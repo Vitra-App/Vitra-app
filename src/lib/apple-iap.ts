@@ -5,6 +5,15 @@ import path from 'node:path';
 // Your app's bundle identifier — must match `PRODUCT_BUNDLE_IDENTIFIER` in the iOS project.
 const BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.michaelalexandrou.vitra';
 
+// Your app's numeric App Store Connect ID (NOT the bundle ID) — Apple's SignedDataVerifier
+// REQUIRES this for the Production environment (it's optional/omitted for Sandbox). Without it,
+// every single real-customer purchase fails verification with "appAppleId is required when the
+// environment is Production" — Apple genuinely charges the customer, but our backend rejects the
+// transaction and never grants the Pro entitlement. Found via Railway logs on 2026-08-25: this
+// silently broke 100% of production purchases since launch. This value is visible in App Store
+// Connect under App Information > Apple ID (also in the App Store URL: apps/<this number>).
+const APP_APPLE_ID = Number(process.env.APPLE_APP_ID || '6792379094');
+
 // Apple's App-Specific Shared Secret is NOT required for StoreKit2 JWS verification —
 // transactions are signed by Apple and verified offline against Apple's root CA chain.
 const rootCert = fs.readFileSync(
@@ -18,7 +27,7 @@ function getVerifier(environment: Environment): SignedDataVerifier {
   if (environment === Environment.PRODUCTION) {
     if (!productionVerifier) {
       productionVerifier = new SignedDataVerifier(
-        [rootCert], false, Environment.PRODUCTION, BUNDLE_ID, APP_APPLE_ID
+        [rootCert], false, Environment.PRODUCTION, BUNDLE_ID
       );
     }
     return productionVerifier;
