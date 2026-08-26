@@ -408,10 +408,13 @@ async function runPhotoAnalysis(model: string, base64Image: string, mimeType: st
         ],
       },
     ],
-    max_completion_tokens: 1600,
+    max_completion_tokens: 4000,
     response_format: { type: 'json_object' },
   });
   const raw = response.choices[0]?.message?.content ?? '{}';
+  if (!raw.trim()) {
+    throw new Error(`Empty response from ${model} (finish_reason: ${response.choices[0]?.finish_reason ?? 'unknown'}) -- likely ran out of completion tokens during reasoning.`);
+  }
   return JSON.parse(raw) as MealPhotoAnalysis;
 }
 
@@ -423,10 +426,13 @@ async function runTextAnalysis(model: string, userText: string): Promise<MealPho
       { role: 'system', content: TEXT_SYSTEM_PROMPT },
       { role: 'user', content: userText },
     ],
-    max_completion_tokens: 1000,
+    max_completion_tokens: 3000,
     response_format: { type: 'json_object' },
   });
   const raw = response.choices[0]?.message?.content ?? '{}';
+  if (!raw.trim()) {
+    throw new Error(`Empty response from ${model} (finish_reason: ${response.choices[0]?.finish_reason ?? 'unknown'}) -- likely ran out of completion tokens during reasoning.`);
+  }
   return JSON.parse(raw) as MealPhotoAnalysis;
 }
 
