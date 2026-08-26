@@ -426,6 +426,11 @@ async function runTextAnalysis(model: string, userText: string): Promise<MealPho
       { role: 'system', content: TEXT_SYSTEM_PROMPT },
       { role: 'user', content: userText },
     ],
+    // Text-only scans are the simplest case (no image to interpret) -- "low" reasoning effort
+    // is plenty for accurate macro estimation, and noticeably faster/cheaper than the default.
+    // Photo analysis intentionally does NOT set this, since visual interpretation benefits more
+    // from the model's default reasoning depth.
+    reasoning_effort: 'low',
     max_completion_tokens: 3000,
     response_format: { type: 'json_object' },
   });
