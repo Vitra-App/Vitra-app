@@ -124,7 +124,15 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const profile = await prisma.userProfile.findUnique({ where: { userId: session.user.id } });
-  return NextResponse.json(profile);
+  // Brand-new users (registered, guest, Apple, Google -- none of which eagerly create a
+  // UserProfile row) have no row here at all, so `profile` is `null`. Returning that raw
+  // `null` as the JSON body used to silently break the iOS client: it decodes the response
+  // into a non-optional `UserProfile` struct, so `JSONDecoder` throws on literal `null`,
+  // the client's `try?` swallows that error, and `needsOnboarding` was NEVER set --
+  // permanently stuck at its default `false`, so onboarding never appeared for new users.
+  // Returning `{}` instead decodes cleanly into a `UserProfile` with every field nil, which
+  // is exactly what `needsOnboarding = profile.heightCm == nil` needs to correctly fire.
+  return NextResponse.json(profile ?? {});
 }
 
 // ── DELETE /api/user/profile  (delete account) ────────────────────────────────
