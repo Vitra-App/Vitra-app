@@ -90,12 +90,19 @@ export async function PUT(req: NextRequest) {
     profileData.carbTargetG !== undefined ||
     profileData.fatTargetG !== undefined;
 
+  // Same principle as macros above: if this request explicitly includes a `caloricTarget`
+  // (i.e. the user manually typed a calorie goal in Edit Profile), that MUST win over the
+  // auto-calculated TDEE formula -- otherwise every subsequent profile save (e.g. logging a
+  // new weight entry, changing activity level) would silently discard the user's manual
+  // override back to the formula-derived value.
+  const clientProvidedCalories = profileData.caloricTarget !== undefined;
+
   const finalData = {
     ...profileData,
     dateOfBirth: dob,
     ...(derived
       ? {
-          caloricTarget: derived.caloricTarget,
+          ...(clientProvidedCalories ? {} : { caloricTarget: derived.caloricTarget }),
           ...(clientProvidedMacros
             ? {}
             : {
